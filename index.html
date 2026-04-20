@@ -1,0 +1,213 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Calculadora de Asado (Río Gallegos)</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <style>
+        body { background-color: #1a1a1a; color: #ffffff; font-family: system-ui, -apple-system, sans-serif; }
+        .card-bg { background-color: #242424; }
+        .item-bg { background-color: #2d2d2d; }
+    </style>
+</head>
+<body class="p-8 flex justify-center items-start min-h-screen">
+
+    <div class="card-bg p-6 rounded-xl shadow-lg w-full max-w-3xl border border-gray-700">
+        
+        <div class="flex justify-between items-start mb-6 border-b border-gray-700 pb-4">
+            <div>
+                <h1 class="text-xl font-bold text-blue-400">Calculadora de Asado (Río Gallegos)</h1>
+                <p id="alertaClima" class="text-sm text-gray-400 mt-1">Condiciones óptimas para el asado.</p>
+            </div>
+            <div class="flex space-x-6 text-sm text-right">
+                <div>
+                    <span class="text-gray-400 block text-xs font-bold uppercase">Carne Total</span>
+                    <span id="resCarneTotal" class="font-bold text-lg">40.0 kg</span>
+                </div>
+                <div>
+                    <span class="text-gray-400 block text-xs font-bold uppercase">Chorizos</span>
+                    <span id="resChoriTotal" class="font-bold text-lg">30 uds</span>
+                </div>
+                <div>
+                    <span class="text-gray-400 block text-xs font-bold uppercase">Fuego</span>
+                    <span id="resFuegoTotal" class="font-bold text-lg">32 kg total</span>
+                </div>
+            </div>
+        </div>
+
+        <h2 class="text-center text-lg font-semibold mb-4">Lista de Compras para <span id="lblPersonas">50</span> personas</h2>
+        
+        <div class="item-bg rounded-xl p-2 mb-6">
+            <div class="flex justify-between items-center p-4 border-b border-gray-700">
+                <div class="flex items-center space-x-4">
+                    <span class="text-2xl">🥩</span>
+                    <div>
+                        <h3 class="font-bold text-md">Carne Principal</h3>
+                        <p id="descCarne" class="text-xs text-gray-400">Sin Hueso (Vacío/Matambre)</p>
+                    </div>
+                </div>
+                <div class="border border-red-500 text-red-400 px-3 py-1 rounded-full text-sm font-bold">
+                    <span id="valCarne">40.0</span> KG
+                </div>
+            </div>
+
+            <div class="flex justify-between items-center p-4 border-b border-gray-700">
+                <div class="flex items-center space-x-4">
+                    <span class="text-2xl">🌭</span>
+                    <div>
+                        <h3 class="font-bold text-md">Chorizos</h3>
+                        <p class="text-xs text-gray-400">Entrada clásica</p>
+                    </div>
+                </div>
+                <div class="border border-yellow-500 text-yellow-400 px-3 py-1 rounded-full text-sm font-bold">
+                    <span id="valChori">30</span> UDS
+                </div>
+            </div>
+
+            <div class="flex justify-between items-center p-4 border-b border-gray-700">
+                <div class="flex items-center space-x-4">
+                    <span class="text-2xl">🔥</span>
+                    <div>
+                        <h3 class="font-bold text-md">Carbón</h3>
+                        <p class="text-xs text-gray-400">Total: <span id="kgCarbon">20.0</span>kg (4kg c/u)</p>
+                    </div>
+                </div>
+                <div class="border border-blue-500 text-blue-400 px-3 py-1 rounded-full text-sm font-bold">
+                    <span id="bolsasCarbon">5</span> BOLSAS
+                </div>
+            </div>
+
+            <div class="flex justify-between items-center p-4">
+                <div class="flex items-center space-x-4">
+                    <span class="text-2xl">🪵</span>
+                    <div>
+                        <h3 class="font-bold text-md">Leña</h3>
+                        <p class="text-xs text-gray-400">Total: <span id="kgLena">12.0</span>kg (3kg c/u)</p>
+                    </div>
+                </div>
+                <div class="border border-green-500 text-green-400 px-3 py-1 rounded-full text-sm font-bold">
+                    <span id="bolsasLena">4</span> BOLSAS
+                </div>
+            </div>
+        </div>
+
+        <div class="grid grid-cols-1 md:grid-cols-2 gap-4 items-center">
+            <div class="flex items-center space-x-4">
+                <label class="text-sm font-bold text-gray-300">Personas</label>
+                <input type="range" id="inputPersonas" min="1" max="150" value="50" class="w-full accent-blue-500">
+                <input type="number" id="numPersonas" value="50" class="bg-gray-800 text-white border border-gray-600 rounded px-2 py-1 w-16 text-center text-sm">
+            </div>
+            <div class="flex items-center space-x-4">
+                <label class="text-sm font-bold text-gray-300 w-24">Tipo de Carne</label>
+                <select id="inputCarne" class="bg-gray-800 text-white border border-gray-600 rounded px-3 py-1 w-full text-sm">
+                    <option value="sin_hueso">Sin Hueso (Vacío/Matambre)</option>
+                    <option value="con_hueso">Con Hueso (Asado/Costillar)</option>
+                </select>
+            </div>
+            <div class="flex items-center space-x-4 md:col-span-2">
+                <label class="text-sm font-bold text-gray-300 w-24">Escenario</label>
+                <select id="inputEscenario" class="bg-gray-800 text-white border border-gray-600 rounded px-3 py-1 w-full text-sm">
+                    <option value="quincho">Quincho (Interior)</option>
+                    <option value="chulengo">Chulengo (Exterior protegido)</option>
+                    <option value="afuera">Afuera (Viento/Intemperie)</option>
+                </select>
+            </div>
+        </div>
+
+    </div>
+
+    <script>
+        const dom = {
+            personas: document.getElementById('inputPersonas'),
+            numPersonas: document.getElementById('numPersonas'),
+            tipoCarne: document.getElementById('inputCarne'),
+            escenario: document.getElementById('inputEscenario'),
+            
+            lblPersonas: document.getElementById('lblPersonas'),
+            valCarne: document.getElementById('valCarne'),
+            descCarne: document.getElementById('descCarne'),
+            valChori: document.getElementById('valChori'),
+            
+            kgCarbon: document.getElementById('kgCarbon'),
+            bolsasCarbon: document.getElementById('bolsasCarbon'),
+            kgLena: document.getElementById('kgLena'),
+            bolsasLena: document.getElementById('bolsasLena'),
+
+            resCarneTotal: document.getElementById('resCarneTotal'),
+            resChoriTotal: document.getElementById('resChoriTotal'),
+            resFuegoTotal: document.getElementById('resFuegoTotal'),
+            alertaClima: document.getElementById('alertaClima')
+        };
+
+        function calcular() {
+            let personas = parseInt(dom.personas.value);
+            let tipoCarne = dom.tipoCarne.value;
+            let escenario = dom.escenario.value;
+
+            // Ratios base
+            let ratioCarne = tipoCarne === 'con_hueso' ? 1.0 : 0.8;
+            let ratioChori = 0.6;
+            
+            let factorFuego = 1.0;
+            if (escenario === 'chulengo') factorFuego = 1.35;
+            if (escenario === 'afuera') factorFuego = 1.75;
+
+            // Cálculos
+            let totalCarne = personas * ratioCarne;
+            let totalChoris = Math.ceil(personas * ratioChori);
+            
+            let totalCarbon = personas * 0.4 * factorFuego;
+            let totalLena = personas * 0.24 * factorFuego;
+
+            let bolsasCarb = Math.ceil(totalCarbon / 4);
+            let bolsasLen = Math.ceil(totalLena / 3);
+
+            // Actualizar UI
+            dom.lblPersonas.textContent = personas;
+            dom.valCarne.textContent = totalCarne.toFixed(1);
+            dom.descCarne.textContent = tipoCarne === 'con_hueso' ? 'Con Hueso (Asado de Tira/Costillar)' : 'Sin Hueso (Vacío/Matambre)';
+            dom.valChori.textContent = totalChoris;
+
+            dom.kgCarbon.textContent = totalCarbon.toFixed(1);
+            dom.bolsasCarbon.textContent = bolsasCarb;
+            dom.kgLena.textContent = totalLena.toFixed(1);
+            dom.bolsasLena.textContent = bolsasLen;
+
+            dom.resCarneTotal.textContent = totalCarne.toFixed(1) + ' kg';
+            dom.resChoriTotal.textContent = totalChoris + ' uds';
+            dom.resFuegoTotal.textContent = (totalCarbon + totalLena).toFixed(1) + ' kg total';
+
+            // Alertas de entorno
+            if (escenario === 'afuera') {
+                dom.alertaClima.textContent = '⚠️ ALERTA: Viento patagónico. Pérdida térmica extrema.';
+                dom.alertaClima.className = 'text-sm font-bold text-red-400 mt-1';
+            } else if (escenario === 'chulengo') {
+                dom.alertaClima.textContent = 'Mantener la tapa cerrada. Hay fuga térmica moderada.';
+                dom.alertaClima.className = 'text-sm font-bold text-yellow-400 mt-1';
+            } else {
+                dom.alertaClima.textContent = 'Condiciones óptimas para el asado.';
+                dom.alertaClima.className = 'text-sm text-gray-400 mt-1';
+            }
+        }
+
+        // Event Listeners
+        dom.personas.addEventListener('input', (e) => {
+            dom.numPersonas.value = e.target.value;
+            calcular();
+        });
+        dom.numPersonas.addEventListener('input', (e) => {
+            let val = e.target.value;
+            if(val >= 1 && val <= 150) {
+                dom.personas.value = val;
+                calcular();
+            }
+        });
+        dom.tipoCarne.addEventListener('change', calcular);
+        dom.escenario.addEventListener('change', calcular);
+
+        // Init
+        calcular();
+    </script>
+</body>
+</html>
