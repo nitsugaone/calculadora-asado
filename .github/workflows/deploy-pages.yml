@@ -4,6 +4,7 @@ on:
   push:
     branches:
       - main
+      - codex/react-pwa-asado-pro-20260619
   workflow_dispatch:
 
 permissions:
