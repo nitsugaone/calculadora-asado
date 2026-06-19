@@ -1,0 +1,5 @@
+{
+  "name": "Asado Pro",
+  "description": "Calculadora de asado para Río Gallegos con ajuste por viento, frío, combustible, compras y escote offline.",
+  "requestFramePermissions": []
+}
