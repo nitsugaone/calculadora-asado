@@ -1,0 +1,19 @@
+{
+  "name": "Asado Pro - Río Gallegos",
+  "short_name": "Asado Pro",
+  "description": "Calculadora de asado adaptada a viento, frío y escenarios patagónicos.",
+  "start_url": "/",
+  "scope": "/",
+  "display": "standalone",
+  "orientation": "portrait-primary",
+  "background_color": "#120d0b",
+  "theme_color": "#ea580c",
+  "icons": [
+    {
+      "src": "/icon.svg",
+      "sizes": "192x192 512x512",
+      "type": "image/svg+xml",
+      "purpose": "any maskable"
+    }
+  ]
+}
