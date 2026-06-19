@@ -2,6 +2,15 @@ export type CutType = 'sin_hueso' | 'con_hueso' | 'premium';
 
 export type ScenarioType = 'quincho' | 'chulengo' | 'afuera';
 
+export type ChecklistCategory =
+  | 'carnes'
+  | 'fuego'
+  | 'bebidas'
+  | 'acompanamientos'
+  | 'otros';
+
+export type AsadoFeedback = 'perfecto' | 'sobro' | 'falto';
+
 export interface WeatherStatus {
   temp: number;
   wind: number;
@@ -22,8 +31,9 @@ export interface ChecklistItem {
   id: string;
   label: string;
   amount: string;
-  category: 'carnes' | 'fuego' | 'bebidas' | 'acompanamientos';
+  category: ChecklistCategory;
   checked: boolean;
+  custom?: boolean;
 }
 
 export interface AsadoResult {
@@ -44,4 +54,57 @@ export interface SplitCostConfig {
   meatPricePerKg: number;
   carbonPricePerBag: number;
   extraExpenses: number;
+}
+
+export interface ExtrasConfig {
+  includeAlcohol: boolean;
+  saladMode: 'simple' | 'abundante';
+  breadMode: 'normal' | 'generoso';
+}
+
+export interface ExtrasPlan {
+  waterLiters: number;
+  sodaLiters: number;
+  beerLiters: number;
+  wineBottles: number;
+  iceKg: number;
+  breadKg: number;
+  saladKg: number;
+  potatoesKg: number;
+  provoletaUnits: number;
+  chimichurriJars: number;
+}
+
+export interface ForecastSlot {
+  time: string;
+  label: string;
+  temp: number;
+  wind: number;
+  gust: number;
+  precipitationProbability: number;
+  score: number;
+  status: 'ideal' | 'usable' | 'riesgoso';
+  reason: string;
+}
+
+export interface ForecastState {
+  loading: boolean;
+  updatedAt: string | null;
+  slots: ForecastSlot[];
+  bestSlot: ForecastSlot | null;
+  error: string | null;
+}
+
+export interface SavedAsadoSession {
+  id: string;
+  date: string;
+  people: number;
+  cutType: CutType;
+  scenario: ScenarioType;
+  temp: number;
+  wind: number;
+  meatKg: number;
+  carbonKg: number;
+  costPerPerson: number;
+  feedback: AsadoFeedback;
 }

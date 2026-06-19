@@ -2,25 +2,42 @@ import { type ReactNode, useEffect, useMemo, useState } from 'react';
 import {
   AlertTriangle,
   Check,
+  Clock,
+  CloudSun,
   DollarSign,
   Download,
   Flame,
+  History,
+  ListPlus,
   Minus,
   Plus,
   RefreshCw,
+  Save,
   Share2,
-  Smartphone,
+  Trash2,
   Thermometer,
   Users,
   Wifi,
   WifiOff,
   Wind,
 } from 'lucide-react';
-import { calculateAsado, getThermodynamicAdvice, getWeatherAdvice } from './calculations';
 import {
+  calculateAsado,
+  calculateExtras,
+  getFeedbackAdjustment,
+  getThermodynamicAdvice,
+  getWeatherAdvice,
+  scoreForecastSlot,
+} from './calculations';
+import {
+  AsadoFeedback,
+  ChecklistCategory,
   ChecklistItem,
   CutType,
+  ExtrasConfig,
+  ForecastState,
   ParticipantConfig,
+  SavedAsadoSession,
   ScenarioType,
   SplitCostConfig,
   WeatherStatus,
@@ -29,8 +46,36 @@ import {
 const DEFAULT_MEAT_PRICE = 10000;
 const DEFAULT_COAL_PRICE = 2200;
 const DEFAULT_EXTRA_PRICE = 15000;
+const HISTORY_KEY = 'asado-pro-history-v1';
+const RIO_GALLEGOS_FORECAST_URL =
+  'https://api.open-meteo.com/v1/forecast?latitude=-51.623&longitude=-69.2168&current=temperature_2m,wind_speed_10m,wind_gusts_10m,weather_code,precipitation&hourly=temperature_2m,wind_speed_10m,wind_gusts_10m,precipitation_probability&forecast_days=3&timezone=America%2FArgentina%2FBuenos_Aires&wind_speed_unit=kmh';
 
 const currency = new Intl.NumberFormat('es-AR');
+
+const emptyForecast: ForecastState = {
+  loading: false,
+  updatedAt: null,
+  slots: [],
+  bestSlot: null,
+  error: null,
+};
+
+type OpenMeteoForecast = {
+  current?: {
+    temperature_2m?: number;
+    wind_speed_10m?: number;
+    wind_gusts_10m?: number;
+    weather_code?: number;
+    precipitation?: number;
+  };
+  hourly?: {
+    time?: string[];
+    temperature_2m?: number[];
+    wind_speed_10m?: number[];
+    wind_gusts_10m?: number[];
+    precipitation_probability?: number[];
+  };
+};
 
 export default function App() {
   const [totalPeople, setTotalPeople] = useState(12);
@@ -49,7 +94,16 @@ export default function App() {
     carbonPricePerBag: DEFAULT_COAL_PRICE,
     extraExpenses: DEFAULT_EXTRA_PRICE,
   });
+  const [extrasConfig, setExtrasConfig] = useState<ExtrasConfig>({
+    includeAlcohol: true,
+    saladMode: 'simple',
+    breadMode: 'normal',
+  });
   const [checklist, setChecklist] = useState<ChecklistItem[]>([]);
+  const [customItems, setCustomItems] = useState<ChecklistItem[]>([]);
+  const [customLabel, setCustomLabel] = useState('');
+  const [customAmount, setCustomAmount] = useState('');
+  const [customCategory, setCustomCategory] = useState<ChecklistCategory>('otros');
   const [onlineStatus, setOnlineStatus] = useState(
     typeof navigator === 'undefined' ? true : navigator.onLine
   );
@@ -58,10 +112,12 @@ export default function App() {
     wind: 35,
     loading: false,
     isReal: false,
-    locationName: 'Río Gallegos (promedio)',
+    locationName: 'Río Gallegos (manual)',
     conditionText: 'Clima ventoso de referencia',
     error: null,
   });
+  const [forecast, setForecast] = useState<ForecastState>(emptyForecast);
+  const [history, setHistory] = useState<SavedAsadoSession[]>([]);
   const [deferredPrompt, setDeferredPrompt] = useState<any>(null);
   const [notice, setNotice] = useState<string | null>(null);
 
@@ -82,6 +138,15 @@ export default function App() {
       setDeferredPrompt(event);
     };
 
+    const storedHistory = window.localStorage.getItem(HISTORY_KEY);
+    if (storedHistory) {
+      try {
+        setHistory(JSON.parse(storedHistory));
+      } catch {
+        window.localStorage.removeItem(HISTORY_KEY);
+      }
+    }
+
     window.addEventListener('online', handleOnline);
     window.addEventListener('offline', handleOffline);
     window.addEventListener('beforeinstallprompt', handleInstallPrompt);
@@ -93,17 +158,18 @@ export default function App() {
     };
   }, []);
 
-  const results = calculateAsado(
-    totalPeople,
-    cutType,
-    scenario,
-    temp,
-    wind,
-    showAdvancedDemo ? demographics : null
+  const advancedDist = showAdvancedDemo ? demographics : null;
+  const results = useMemo(
+    () => calculateAsado(totalPeople, cutType, scenario, temp, wind, advancedDist),
+    [advancedDist, cutType, scenario, temp, totalPeople, wind]
   );
-
+  const extras = useMemo(
+    () => calculateExtras(totalPeople, advancedDist, extrasConfig),
+    [advancedDist, extrasConfig, totalPeople]
+  );
   const adviceStatus = getWeatherAdvice(scenario, temp, wind);
   const thermoTips = getThermodynamicAdvice(temp, wind);
+  const feedbackAdjustment = getFeedbackAdjustment(history);
 
   const totalCostEstimate =
     results.carneTotal * costs.meatPricePerKg +
@@ -162,27 +228,76 @@ export default function App() {
       },
       {
         id: 'b1',
-        label: 'Bebidas',
-        amount: `${Math.ceil(totalPeople * 0.6)} litros base`,
+        label: 'Agua',
+        amount: `${extras.waterLiters} litros`,
+        category: 'bebidas',
+        checked: false,
+      },
+      {
+        id: 'b2',
+        label: 'Gaseosa / jugo',
+        amount: `${extras.sodaLiters} litros`,
+        category: 'bebidas',
+        checked: false,
+      },
+      {
+        id: 'b3',
+        label: 'Cerveza',
+        amount: extrasConfig.includeAlcohol ? `${extras.beerLiters} litros` : 'No incluida',
+        category: 'bebidas',
+        checked: false,
+      },
+      {
+        id: 'b4',
+        label: 'Vino',
+        amount: extrasConfig.includeAlcohol ? `${extras.wineBottles} botellas` : 'No incluido',
+        category: 'bebidas',
+        checked: false,
+      },
+      {
+        id: 'b5',
+        label: 'Hielo',
+        amount: `${extras.iceKg} kg`,
         category: 'bebidas',
         checked: false,
       },
       {
         id: 'a1',
-        label: 'Pan y ensaladas',
-        amount: `Para ${totalPeople} personas`,
+        label: 'Pan',
+        amount: `${extras.breadKg} kg`,
         category: 'acompanamientos',
         checked: false,
       },
       {
         id: 'a2',
+        label: 'Ensaladas',
+        amount: `${extras.saladKg} kg`,
+        category: 'acompanamientos',
+        checked: false,
+      },
+      {
+        id: 'a3',
+        label: 'Papas / guarnición caliente',
+        amount: `${extras.potatoesKg} kg`,
+        category: 'acompanamientos',
+        checked: false,
+      },
+      {
+        id: 'a4',
+        label: 'Provoleta',
+        amount: `${extras.provoletaUnits} unidades`,
+        category: 'acompanamientos',
+        checked: false,
+      },
+      {
+        id: 'a5',
         label: 'Chimichurri y salsa criolla',
-        amount: '1 frasco de cada uno',
+        amount: `${extras.chimichurriJars} frascos`,
         category: 'acompanamientos',
         checked: false,
       },
     ],
-    [cutType, results, totalPeople]
+    [cutType, extras, extrasConfig.includeAlcohol, results]
   );
 
   useEffect(() => {
@@ -194,9 +309,13 @@ export default function App() {
     );
   }, [checklistItems]);
 
-  const checkedCount = checklist.filter((item) => item.checked).length;
+  const allChecklist = useMemo(
+    () => [...checklist, ...customItems],
+    [checklist, customItems]
+  );
+  const checkedCount = allChecklist.filter((item) => item.checked).length;
   const progressPercent =
-    checklist.length === 0 ? 0 : Math.round((checkedCount / checklist.length) * 100);
+    allChecklist.length === 0 ? 0 : Math.round((checkedCount / allChecklist.length) * 100);
 
   const triggerHaptic = (pattern: number | number[]) => {
     if (navigator.vibrate) {
@@ -221,45 +340,79 @@ export default function App() {
     window.setTimeout(() => setNotice(null), 3500);
   };
 
-  const fetchRealWeather = async () => {
+  const fetchForecast = async () => {
     triggerHaptic(20);
     setWeather((previous) => ({ ...previous, loading: true, error: null }));
+    setForecast((previous) => ({ ...previous, loading: true, error: null }));
 
     try {
-      const response = await fetch('https://wttr.in/Rio%20Gallegos?format=j1');
+      const response = await fetch(RIO_GALLEGOS_FORECAST_URL);
       if (!response.ok) {
-        throw new Error('No se pudo consultar el clima.');
+        throw new Error('No se pudo consultar Open-Meteo.');
       }
 
-      const data = await response.json();
-      const current = data.current_condition?.[0];
-      if (!current) {
-        throw new Error('La respuesta del clima no tiene datos actuales.');
+      const data: OpenMeteoForecast = await response.json();
+      const current = data.current;
+      const hourly = data.hourly;
+
+      if (!current || !hourly?.time?.length) {
+        throw new Error('Open-Meteo no devolvió datos suficientes.');
       }
 
-      const nextTemp = parseInt(current.temp_C, 10) || 8;
-      const nextWind = parseInt(current.windspeedKmph, 10) || 35;
-      const condition =
-        current.lang_es?.[0]?.value || current.weatherDesc?.[0]?.value || 'Parcialmente nublado';
+      const currentTemp = Math.round(current.temperature_2m ?? temp);
+      const currentWind = Math.round(current.wind_speed_10m ?? wind);
+      const currentGust = Math.round(current.wind_gusts_10m ?? currentWind);
+      const currentCondition = describeWeatherCode(current.weather_code);
 
       setWeather({
-        temp: nextTemp,
-        wind: nextWind,
+        temp: currentTemp,
+        wind: currentWind,
         loading: false,
         isReal: true,
         locationName: 'Río Gallegos',
-        conditionText: condition,
+        conditionText: `${currentCondition}, ráfagas ${currentGust} km/h`,
         error: null,
       });
-      setTemp(nextTemp);
-      setWind(nextWind);
-      showNotice('Clima real actualizado.');
+      setTemp(currentTemp);
+      setWind(currentWind);
+
+      const slots = hourly.time
+        .map((timeValue, index) =>
+          scoreForecastSlot(
+            timeValue,
+            Math.round(hourly.temperature_2m?.[index] ?? currentTemp),
+            Math.round(hourly.wind_speed_10m?.[index] ?? currentWind),
+            Math.round(hourly.wind_gusts_10m?.[index] ?? currentGust),
+            Math.round(hourly.precipitation_probability?.[index] ?? 0)
+          )
+        )
+        .filter((slot) => {
+          const hour = new Date(slot.time).getHours();
+          return hour >= 11 && hour <= 23;
+        });
+
+      const bestSlot = [...slots].sort((a, b) => b.score - a.score)[0] ?? null;
+      const displaySlots = [...slots].sort((a, b) => b.score - a.score).slice(0, 6);
+
+      setForecast({
+        loading: false,
+        updatedAt: new Date().toISOString(),
+        slots: displaySlots,
+        bestSlot,
+        error: null,
+      });
+      showNotice('Pronóstico de parrilla actualizado.');
     } catch {
       setWeather((previous) => ({
         ...previous,
         loading: false,
         isReal: false,
-        error: 'No se pudo conectar al clima real. Se mantienen valores manuales.',
+        error: 'No se pudo conectar con Open-Meteo. Se mantienen los valores manuales.',
+      }));
+      setForecast((previous) => ({
+        ...previous,
+        loading: false,
+        error: 'No se pudo cargar el pronóstico.',
       }));
     }
   };
@@ -271,20 +424,87 @@ export default function App() {
     setDeferredPrompt(null);
   };
 
+  const addCustomItem = () => {
+    const label = customLabel.trim();
+    if (!label) return;
+
+    setCustomItems((current) => [
+      ...current,
+      {
+        id: `custom-${Date.now()}`,
+        label,
+        amount: customAmount.trim() || 'A gusto',
+        category: customCategory,
+        checked: false,
+        custom: true,
+      },
+    ]);
+    setCustomLabel('');
+    setCustomAmount('');
+    setCustomCategory('otros');
+    showNotice('Ítem agregado a la lista.');
+  };
+
+  const toggleChecklistItem = (item: ChecklistItem) => {
+    const updater = (entry: ChecklistItem) =>
+      entry.id === item.id ? { ...entry, checked: !entry.checked } : entry;
+
+    if (item.custom) {
+      setCustomItems((current) => current.map(updater));
+      return;
+    }
+
+    setChecklist((current) => current.map(updater));
+  };
+
+  const removeCustomItem = (itemId: string) => {
+    setCustomItems((current) => current.filter((item) => item.id !== itemId));
+  };
+
+  const saveSession = (feedback: AsadoFeedback) => {
+    const nextSession: SavedAsadoSession = {
+      id: String(Date.now()),
+      date: new Date().toISOString(),
+      people: totalPeople,
+      cutType,
+      scenario,
+      temp,
+      wind,
+      meatKg: results.carneTotal,
+      carbonKg: results.carbonTotal,
+      costPerPerson,
+      feedback,
+    };
+
+    const nextHistory = [nextSession, ...history].slice(0, 8);
+    setHistory(nextHistory);
+    window.localStorage.setItem(HISTORY_KEY, JSON.stringify(nextHistory));
+    showNotice('Asado guardado en el historial.');
+  };
+
+  const deleteSession = (sessionId: string) => {
+    const nextHistory = history.filter((session) => session.id !== sessionId);
+    setHistory(nextHistory);
+    window.localStorage.setItem(HISTORY_KEY, JSON.stringify(nextHistory));
+  };
+
   const shareDetails = async () => {
     triggerHaptic(30);
+    const forecastLine = forecast.bestSlot
+      ? `Mejor horario: ${forecast.bestSlot.label} (${forecast.bestSlot.wind} km/h, ráfagas ${forecast.bestSlot.gust} km/h)`
+      : 'Pronóstico: pendiente';
+    const listText = allChecklist
+      .map((item) => `- ${item.label}: ${item.amount}`)
+      .join('\n');
     const text = `ASADO PRO - RÍO GALLEGOS
 Comensales: ${totalPeople} (${demographics.hombres}H / ${demographics.mujeres}M / ${demographics.ninos}N)
 Corte: ${cutType === 'premium' ? 'Premium mix' : cutType === 'con_hueso' ? 'Con hueso' : 'Sin hueso'}
 Clima: ${temp}°C, viento ${wind} km/h
+${forecastLine}
 Factor térmico: ${results.factorFuego}x
 
 Compra:
-- Carne: ${results.carneTotal} kg
-- Chorizos: ${results.choriTotal}
-- Morcillas: ${results.morciTotal}
-- Carbón: ${results.carbonTotal} kg (${results.bolsasCarbon} bolsas)
-- Leña: ${results.lenaTotal} kg (${results.bolsasLena} atados)
+${listText}
 
 Escote estimado: $${currency.format(costPerPerson)} ARS por persona`;
 
@@ -304,7 +524,7 @@ Escote estimado: $${currency.format(costPerPerson)} ARS por persona`;
           <div>
             <h1 className="text-2xl font-black tracking-tight text-amber-300">Asado Pro</h1>
             <p className="text-xs font-semibold uppercase tracking-wider text-orange-300/80">
-              Río Gallegos · calculadora de fuego, compras y escote
+              Río Gallegos · compras, clima, escote e historial
             </p>
           </div>
 
@@ -321,12 +541,14 @@ Escote estimado: $${currency.format(costPerPerson)} ARS por persona`;
             </span>
 
             <button
-              onClick={fetchRealWeather}
-              disabled={weather.loading}
+              onClick={fetchForecast}
+              disabled={weather.loading || forecast.loading}
               className="inline-flex items-center gap-1.5 rounded-full border border-sky-500/30 bg-sky-500/10 px-3 py-1 text-xs font-bold text-sky-300 transition hover:bg-sky-500/20 disabled:opacity-60"
             >
-              <RefreshCw className={`h-3.5 w-3.5 ${weather.loading ? 'animate-spin' : ''}`} />
-              {weather.loading ? 'Leyendo clima' : 'Clima real'}
+              <RefreshCw
+                className={`h-3.5 w-3.5 ${weather.loading || forecast.loading ? 'animate-spin' : ''}`}
+              />
+              {weather.loading || forecast.loading ? 'Leyendo clima' : 'Pronóstico'}
             </button>
 
             {deferredPrompt && (
@@ -342,26 +564,20 @@ Escote estimado: $${currency.format(costPerPerson)} ARS por persona`;
         </div>
       </header>
 
-      <main className="mx-auto grid max-w-6xl gap-4 px-4 py-5 lg:grid-cols-[1.05fr_0.95fr]">
+      <main className="mx-auto grid max-w-6xl gap-4 px-4 py-5 xl:grid-cols-[1fr_1fr]">
         <section className="flex flex-col gap-4">
           <Panel title="Comensales" icon={<Users className="h-5 w-5 text-orange-400" />}>
             <div className="flex items-center justify-between gap-3">
-              <button
-                onClick={() => updatePeople(totalPeople - 1)}
-                className="grid h-10 w-10 place-items-center rounded-lg border border-amber-900 bg-[#1c120f] text-amber-200"
-              >
+              <IconButton label="Restar persona" onClick={() => updatePeople(totalPeople - 1)}>
                 <Minus className="h-4 w-4" />
-              </button>
+              </IconButton>
               <div className="text-center">
                 <div className="text-5xl font-black text-white">{totalPeople}</div>
                 <div className="text-xs font-bold uppercase tracking-wider text-stone-400">personas</div>
               </div>
-              <button
-                onClick={() => updatePeople(totalPeople + 1)}
-                className="grid h-10 w-10 place-items-center rounded-lg border border-amber-900 bg-[#1c120f] text-amber-200"
-              >
+              <IconButton label="Sumar persona" onClick={() => updatePeople(totalPeople + 1)}>
                 <Plus className="h-4 w-4" />
-              </button>
+              </IconButton>
             </div>
 
             <input
@@ -425,6 +641,53 @@ Escote estimado: $${currency.format(costPerPerson)} ARS por persona`;
             </div>
           </Panel>
 
+          <Panel title="Bebidas y extras" icon={<ListPlus className="h-5 w-5 text-emerald-300" />}>
+            <div className="grid gap-2 sm:grid-cols-3">
+              <ToggleButton
+                active={extrasConfig.includeAlcohol}
+                label="Con alcohol"
+                onClick={() =>
+                  setExtrasConfig((current) => ({
+                    ...current,
+                    includeAlcohol: !current.includeAlcohol,
+                  }))
+                }
+              />
+              <ToggleButton
+                active={extrasConfig.saladMode === 'abundante'}
+                label="Ensalada fuerte"
+                onClick={() =>
+                  setExtrasConfig((current) => ({
+                    ...current,
+                    saladMode: current.saladMode === 'abundante' ? 'simple' : 'abundante',
+                  }))
+                }
+              />
+              <ToggleButton
+                active={extrasConfig.breadMode === 'generoso'}
+                label="Pan generoso"
+                onClick={() =>
+                  setExtrasConfig((current) => ({
+                    ...current,
+                    breadMode: current.breadMode === 'generoso' ? 'normal' : 'generoso',
+                  }))
+                }
+              />
+            </div>
+
+            <div className="mt-4 grid grid-cols-2 gap-3 sm:grid-cols-4">
+              <Metric label="Agua" value={`${extras.waterLiters} l`} detail="base" compact />
+              <Metric label="Gaseosa" value={`${extras.sodaLiters} l`} detail="jugo/soda" compact />
+              <Metric label="Hielo" value={`${extras.iceKg} kg`} detail="conservadora" compact />
+              <Metric
+                label="Alcohol"
+                value={extrasConfig.includeAlcohol ? `${extras.beerLiters} l` : '0 l'}
+                detail={extrasConfig.includeAlcohol ? `${extras.wineBottles} vinos` : 'sin alcohol'}
+                compact
+              />
+            </div>
+          </Panel>
+
           <Panel title="Clima local" icon={<Wind className="h-5 w-5 text-sky-300" />}>
             <Slider
               label="Temperatura"
@@ -462,6 +725,8 @@ Escote estimado: $${currency.format(costPerPerson)} ARS por persona`;
               </p>
             )}
           </Panel>
+
+          <ForecastPanel forecast={forecast} onRefresh={fetchForecast} />
         </section>
 
         <section className="flex flex-col gap-4">
@@ -494,7 +759,7 @@ Escote estimado: $${currency.format(costPerPerson)} ARS por persona`;
             </div>
           </Panel>
 
-          <Panel title="Lista de compras" icon={<Check className="h-5 w-5 text-emerald-300" />}>
+          <Panel title="Lista editable" icon={<Check className="h-5 w-5 text-emerald-300" />}>
             <div className="mb-3 h-2 overflow-hidden rounded-full bg-[#100907]">
               <div
                 className="h-full rounded-full bg-gradient-to-r from-orange-500 to-emerald-400"
@@ -502,35 +767,78 @@ Escote estimado: $${currency.format(costPerPerson)} ARS por persona`;
               />
             </div>
 
-            <div className="max-h-72 space-y-2 overflow-y-auto pr-1">
-              {checklist.map((item) => (
-                <button
+            <div className="grid gap-2 sm:grid-cols-[1fr_0.75fr_0.7fr_auto]">
+              <input
+                value={customLabel}
+                onChange={(event) => setCustomLabel(event.target.value)}
+                placeholder="Agregar item"
+                className="min-h-10 rounded-lg border border-amber-900/70 bg-[#100907] px-3 text-sm font-semibold text-stone-100 outline-none focus:border-orange-500"
+              />
+              <input
+                value={customAmount}
+                onChange={(event) => setCustomAmount(event.target.value)}
+                placeholder="Cantidad"
+                className="min-h-10 rounded-lg border border-amber-900/70 bg-[#100907] px-3 text-sm font-semibold text-stone-100 outline-none focus:border-orange-500"
+              />
+              <select
+                value={customCategory}
+                onChange={(event) => setCustomCategory(event.target.value as ChecklistCategory)}
+                className="min-h-10 rounded-lg border border-amber-900/70 bg-[#100907] px-3 text-sm font-semibold text-stone-100 outline-none focus:border-orange-500"
+              >
+                <option value="carnes">Carnes</option>
+                <option value="fuego">Fuego</option>
+                <option value="bebidas">Bebidas</option>
+                <option value="acompanamientos">Acomp.</option>
+                <option value="otros">Otros</option>
+              </select>
+              <button
+                onClick={addCustomItem}
+                className="grid min-h-10 place-items-center rounded-lg bg-orange-600 px-3 text-white transition hover:bg-orange-500"
+                aria-label="Agregar item"
+              >
+                <Plus className="h-4 w-4" />
+              </button>
+            </div>
+
+            <div className="mt-3 max-h-96 space-y-2 overflow-y-auto pr-1">
+              {allChecklist.map((item) => (
+                <div
                   key={item.id}
-                  onClick={() =>
-                    setChecklist((current) =>
-                      current.map((entry) =>
-                        entry.id === item.id ? { ...entry, checked: !entry.checked } : entry
-                      )
-                    )
-                  }
-                  className={`flex w-full items-center justify-between gap-3 rounded-lg border p-3 text-left transition ${
+                  className={`flex items-center justify-between gap-3 rounded-lg border p-3 transition ${
                     item.checked
                       ? 'border-emerald-500/30 bg-emerald-500/10 text-stone-400'
                       : 'border-amber-900/60 bg-[#150d0b] text-stone-100 hover:border-amber-700'
                   }`}
                 >
-                  <span className="flex items-center gap-2 text-sm font-bold">
+                  <button
+                    onClick={() => toggleChecklistItem(item)}
+                    className="flex min-w-0 flex-1 items-center gap-2 text-left text-sm font-bold"
+                  >
                     <span
-                      className={`grid h-5 w-5 place-items-center rounded border ${
+                      className={`grid h-5 w-5 shrink-0 place-items-center rounded border ${
                         item.checked ? 'border-emerald-400 bg-emerald-500 text-white' : 'border-amber-800'
                       }`}
                     >
                       {item.checked && <Check className="h-3.5 w-3.5" />}
                     </span>
-                    {item.label}
-                  </span>
-                  <span className="text-xs font-black text-orange-300">{item.amount}</span>
-                </button>
+                    <span className="min-w-0">
+                      <span className="block truncate">{item.label}</span>
+                      <span className="text-[11px] uppercase tracking-wider text-stone-500">
+                        {categoryLabel(item.category)}
+                      </span>
+                    </span>
+                  </button>
+                  <span className="shrink-0 text-xs font-black text-orange-300">{item.amount}</span>
+                  {item.custom && (
+                    <button
+                      onClick={() => removeCustomItem(item.id)}
+                      className="grid h-8 w-8 shrink-0 place-items-center rounded-lg border border-rose-500/30 text-rose-300"
+                      aria-label={`Quitar ${item.label}`}
+                    >
+                      <Trash2 className="h-3.5 w-3.5" />
+                    </button>
+                  )}
+                </div>
               ))}
             </div>
           </Panel>
@@ -582,6 +890,13 @@ Escote estimado: $${currency.format(costPerPerson)} ARS por persona`;
               Compartir lista
             </button>
           </Panel>
+
+          <HistoryPanel
+            history={history}
+            adjustment={feedbackAdjustment}
+            onSave={saveSession}
+            onDelete={deleteSession}
+          />
         </section>
       </main>
 
@@ -595,6 +910,138 @@ Escote estimado: $${currency.format(costPerPerson)} ARS por persona`;
         Asado Pro Río Gallegos · Optimizado para Android y uso offline
       </footer>
     </div>
+  );
+}
+
+function ForecastPanel({
+  forecast,
+  onRefresh,
+}: {
+  forecast: ForecastState;
+  onRefresh: () => void;
+}) {
+  return (
+    <Panel title="Pronóstico de parrilla" icon={<CloudSun className="h-5 w-5 text-sky-300" />}>
+      {forecast.bestSlot ? (
+        <div className={`rounded-lg border p-3 ${forecastTone(forecast.bestSlot.status)}`}>
+          <div className="flex items-center justify-between gap-3">
+            <div>
+              <div className="text-xs font-bold uppercase tracking-wider opacity-80">Mejor horario</div>
+              <div className="text-xl font-black">{forecast.bestSlot.label}</div>
+            </div>
+            <div className="text-right font-mono text-2xl font-black">{forecast.bestSlot.score}</div>
+          </div>
+          <p className="mt-2 text-sm font-semibold">{forecast.bestSlot.reason}</p>
+        </div>
+      ) : (
+        <div className="rounded-lg border border-sky-500/30 bg-sky-500/10 p-3 text-sm font-bold text-sky-200">
+          Consultá Open-Meteo para elegir la mejor ventana de fuego de las próximas 72 horas.
+        </div>
+      )}
+
+      {forecast.error && (
+        <p className="mt-3 flex items-center gap-1.5 text-xs text-rose-300">
+          <AlertTriangle className="h-3.5 w-3.5" />
+          {forecast.error}
+        </p>
+      )}
+
+      <div className="mt-3 grid gap-2 sm:grid-cols-2">
+        {forecast.slots.map((slot) => (
+          <div key={slot.time} className="rounded-lg border border-amber-900/50 bg-[#150d0b] p-3">
+            <div className="flex items-center justify-between gap-2">
+              <span className="flex items-center gap-1.5 text-sm font-black text-amber-100">
+                <Clock className="h-3.5 w-3.5 text-orange-300" />
+                {slot.label}
+              </span>
+              <span className={`rounded-full px-2 py-0.5 text-[11px] font-black ${slotBadge(slot.status)}`}>
+                {slot.status}
+              </span>
+            </div>
+            <div className="mt-2 grid grid-cols-3 gap-2 text-xs text-stone-300">
+              <span>{slot.temp}°C</span>
+              <span>{slot.wind} km/h</span>
+              <span>ráf. {slot.gust}</span>
+            </div>
+            <div className="mt-1 text-xs text-sky-300">lluvia {slot.precipitationProbability}%</div>
+          </div>
+        ))}
+      </div>
+
+      <button
+        onClick={onRefresh}
+        disabled={forecast.loading}
+        className="mt-3 inline-flex w-full items-center justify-center gap-2 rounded-lg border border-sky-500/30 bg-sky-500/10 px-4 py-3 text-sm font-black text-sky-200 transition hover:bg-sky-500/20 disabled:opacity-60"
+      >
+        <RefreshCw className={`h-4 w-4 ${forecast.loading ? 'animate-spin' : ''}`} />
+        Actualizar pronóstico
+      </button>
+    </Panel>
+  );
+}
+
+function HistoryPanel({
+  history,
+  adjustment,
+  onSave,
+  onDelete,
+}: {
+  history: SavedAsadoSession[];
+  adjustment: { title: string; message: string; tone: string };
+  onSave: (feedback: AsadoFeedback) => void;
+  onDelete: (sessionId: string) => void;
+}) {
+  return (
+    <Panel title="Historial y ajuste" icon={<History className="h-5 w-5 text-orange-300" />}>
+      <div className={`rounded-lg border p-3 ${adjustment.tone}`}>
+        <div className="text-sm font-black">{adjustment.title}</div>
+        <p className="mt-1 text-xs leading-relaxed">{adjustment.message}</p>
+      </div>
+
+      <div className="mt-3 grid gap-2 sm:grid-cols-3">
+        <FeedbackButton label="Perfecto" tone="emerald" onClick={() => onSave('perfecto')} />
+        <FeedbackButton label="Sobró" tone="sky" onClick={() => onSave('sobro')} />
+        <FeedbackButton label="Faltó" tone="amber" onClick={() => onSave('falto')} />
+      </div>
+
+      <div className="mt-3 space-y-2">
+        {history.length === 0 && (
+          <div className="rounded-lg border border-amber-900/50 bg-[#150d0b] p-3 text-sm text-stone-400">
+            Guardá el resultado real de cada asado para calibrar futuras compras.
+          </div>
+        )}
+
+        {history.map((session) => (
+          <div
+            key={session.id}
+            className="flex items-center justify-between gap-3 rounded-lg border border-amber-900/50 bg-[#150d0b] p-3"
+          >
+            <div className="min-w-0">
+              <div className="truncate text-sm font-black text-amber-100">
+                {new Intl.DateTimeFormat('es-AR', {
+                  day: '2-digit',
+                  month: 'short',
+                  hour: '2-digit',
+                  minute: '2-digit',
+                }).format(new Date(session.date))}
+                {' · '}
+                {feedbackLabel(session.feedback)}
+              </div>
+              <div className="text-xs text-stone-400">
+                {session.people} pers · {session.meatKg} kg carne · ${currency.format(session.costPerPerson)}
+              </div>
+            </div>
+            <button
+              onClick={() => onDelete(session.id)}
+              className="grid h-8 w-8 shrink-0 place-items-center rounded-lg border border-rose-500/30 text-rose-300"
+              aria-label="Borrar asado guardado"
+            >
+              <Trash2 className="h-3.5 w-3.5" />
+            </button>
+          </div>
+        ))}
+      </div>
+    </Panel>
   );
 }
 
@@ -618,6 +1065,26 @@ function Panel({
   );
 }
 
+function IconButton({
+  label,
+  onClick,
+  children,
+}: {
+  label: string;
+  onClick: () => void;
+  children: ReactNode;
+}) {
+  return (
+    <button
+      onClick={onClick}
+      className="grid h-10 w-10 place-items-center rounded-lg border border-amber-900 bg-[#1c120f] text-amber-200"
+      aria-label={label}
+    >
+      {children}
+    </button>
+  );
+}
+
 function Counter({
   label,
   value,
@@ -631,19 +1098,13 @@ function Counter({
     <div className="rounded-lg border border-amber-900/50 bg-[#150d0b] p-3">
       <div className="mb-2 text-xs font-bold uppercase tracking-wider text-stone-400">{label}</div>
       <div className="flex items-center justify-between gap-2">
-        <button
-          onClick={() => onChange(value - 1)}
-          className="grid h-8 w-8 place-items-center rounded border border-amber-900 text-amber-200"
-        >
+        <IconButton label={`Restar ${label}`} onClick={() => onChange(value - 1)}>
           <Minus className="h-3.5 w-3.5" />
-        </button>
+        </IconButton>
         <span className="text-xl font-black">{value}</span>
-        <button
-          onClick={() => onChange(value + 1)}
-          className="grid h-8 w-8 place-items-center rounded border border-amber-900 text-amber-200"
-        >
+        <IconButton label={`Sumar ${label}`} onClick={() => onChange(value + 1)}>
           <Plus className="h-3.5 w-3.5" />
-        </button>
+        </IconButton>
       </div>
     </div>
   );
@@ -674,6 +1135,55 @@ function Segmented({
         </button>
       ))}
     </div>
+  );
+}
+
+function ToggleButton({
+  active,
+  label,
+  onClick,
+}: {
+  active: boolean;
+  label: string;
+  onClick: () => void;
+}) {
+  return (
+    <button
+      onClick={onClick}
+      className={`rounded-lg border px-3 py-3 text-sm font-black transition ${
+        active
+          ? 'border-emerald-500 bg-emerald-500/15 text-emerald-200'
+          : 'border-amber-900/70 bg-[#150d0b] text-stone-400 hover:border-amber-700'
+      }`}
+    >
+      {label}
+    </button>
+  );
+}
+
+function FeedbackButton({
+  label,
+  tone,
+  onClick,
+}: {
+  label: string;
+  tone: 'emerald' | 'sky' | 'amber';
+  onClick: () => void;
+}) {
+  const tones = {
+    emerald: 'border-emerald-500/30 bg-emerald-500/10 text-emerald-200',
+    sky: 'border-sky-500/30 bg-sky-500/10 text-sky-200',
+    amber: 'border-amber-500/30 bg-amber-500/10 text-amber-200',
+  };
+
+  return (
+    <button
+      onClick={onClick}
+      className={`inline-flex items-center justify-center gap-1.5 rounded-lg border px-3 py-3 text-sm font-black ${tones[tone]}`}
+    >
+      <Save className="h-3.5 w-3.5" />
+      {label}
+    </button>
   );
 }
 
@@ -720,12 +1230,73 @@ function Slider({
   );
 }
 
-function Metric({ label, value, detail }: { label: string; value: string; detail: string }) {
+function Metric({
+  label,
+  value,
+  detail,
+  compact = false,
+}: {
+  label: string;
+  value: string;
+  detail: string;
+  compact?: boolean;
+}) {
   return (
     <div className="rounded-lg border border-amber-900/50 bg-[#150d0b] p-4">
       <div className="text-xs font-bold uppercase tracking-wider text-stone-400">{label}</div>
-      <div className="mt-1 text-2xl font-black text-orange-300">{value}</div>
+      <div className={`mt-1 font-black text-orange-300 ${compact ? 'text-xl' : 'text-2xl'}`}>
+        {value}
+      </div>
       <div className="mt-1 text-xs text-stone-500">{detail}</div>
     </div>
   );
+}
+
+function describeWeatherCode(code?: number) {
+  if (code === undefined) return 'Condición actual';
+  if ([0, 1].includes(code)) return 'Despejado';
+  if ([2, 3].includes(code)) return 'Nubosidad variable';
+  if ([45, 48].includes(code)) return 'Niebla';
+  if ([51, 53, 55, 61, 63, 65, 80, 81, 82].includes(code)) return 'Lluvia';
+  if ([71, 73, 75, 85, 86].includes(code)) return 'Nieve';
+  if ([95, 96, 99].includes(code)) return 'Tormenta';
+  return 'Condición actual';
+}
+
+function categoryLabel(category: ChecklistCategory) {
+  const labels: Record<ChecklistCategory, string> = {
+    carnes: 'Carnes',
+    fuego: 'Fuego',
+    bebidas: 'Bebidas',
+    acompanamientos: 'Acompañamientos',
+    otros: 'Otros',
+  };
+  return labels[category];
+}
+
+function feedbackLabel(feedback: AsadoFeedback) {
+  const labels: Record<AsadoFeedback, string> = {
+    perfecto: 'perfecto',
+    sobro: 'sobró',
+    falto: 'faltó',
+  };
+  return labels[feedback];
+}
+
+function forecastTone(status: 'ideal' | 'usable' | 'riesgoso') {
+  const tones = {
+    ideal: 'text-emerald-200 border-emerald-500/30 bg-emerald-500/10',
+    usable: 'text-amber-200 border-amber-500/30 bg-amber-500/10',
+    riesgoso: 'text-rose-200 border-rose-500/30 bg-rose-500/10',
+  };
+  return tones[status];
+}
+
+function slotBadge(status: 'ideal' | 'usable' | 'riesgoso') {
+  const tones = {
+    ideal: 'bg-emerald-500/15 text-emerald-200',
+    usable: 'bg-amber-500/15 text-amber-200',
+    riesgoso: 'bg-rose-500/15 text-rose-200',
+  };
+  return tones[status];
 }

@@ -1,4 +1,13 @@
-import { CutType, ScenarioType, AsadoResult } from './types';
+import {
+  AsadoFeedback,
+  AsadoResult,
+  CutType,
+  ExtrasConfig,
+  ExtrasPlan,
+  ForecastSlot,
+  SavedAsadoSession,
+  ScenarioType,
+} from './types';
 
 /**
  * Calculates food, starters, and fuel for a Patagonian asado.
@@ -78,6 +87,121 @@ export function calculateAsado(
     bolsasCarbon: Math.ceil(carbonTotal / 4),
     bolsasLena: Math.ceil(lenaTotal / 3),
   };
+}
+
+export function calculateExtras(
+  totalPeople: number,
+  advancedDist: { hombres: number; mujeres: number; ninos: number } | null,
+  config: ExtrasConfig
+): ExtrasPlan {
+  const hombres = advancedDist?.hombres ?? Math.round(totalPeople * 0.4);
+  const mujeres = advancedDist?.mujeres ?? Math.round(totalPeople * 0.4);
+  const ninos = advancedDist?.ninos ?? totalPeople - hombres - mujeres;
+  const adults = Math.max(hombres + mujeres, 0);
+  const people = Math.max(totalPeople, 1);
+
+  const waterLiters = people * 0.55 + ninos * 0.25;
+  const sodaLiters = people * 0.45 + ninos * 0.35;
+  const beerLiters = config.includeAlcohol ? adults * 1.1 : 0;
+  const wineBottles = config.includeAlcohol ? Math.ceil(adults / 4) : 0;
+  const iceKg = Math.max(2, Math.ceil((waterLiters + sodaLiters + beerLiters) * 0.45));
+  const breadMultiplier = config.breadMode === 'generoso' ? 0.13 : 0.09;
+  const saladMultiplier = config.saladMode === 'abundante' ? 0.28 : 0.18;
+
+  return {
+    waterLiters: Number(waterLiters.toFixed(1)),
+    sodaLiters: Number(sodaLiters.toFixed(1)),
+    beerLiters: Number(beerLiters.toFixed(1)),
+    wineBottles,
+    iceKg,
+    breadKg: Number((people * breadMultiplier).toFixed(1)),
+    saladKg: Number((people * saladMultiplier).toFixed(1)),
+    potatoesKg: Number((people * 0.22).toFixed(1)),
+    provoletaUnits: Math.ceil(adults / 5),
+    chimichurriJars: Math.max(1, Math.ceil(people / 10)),
+  };
+}
+
+export function scoreForecastSlot(
+  time: string,
+  temp: number,
+  wind: number,
+  gust: number,
+  precipitationProbability: number
+): ForecastSlot {
+  const hour = new Date(time).getHours();
+  const isCookingWindow = hour >= 11 && hour <= 23;
+  let score = 100;
+
+  score -= Math.max(0, wind - 15) * 1.2;
+  score -= Math.max(0, gust - 25) * 1.5;
+  score -= Math.max(0, 8 - temp) * 2.2;
+  score -= precipitationProbability * 0.45;
+  if (!isCookingWindow) score -= 35;
+
+  const roundedScore = Math.max(0, Math.round(score));
+  let status: ForecastSlot['status'] = 'ideal';
+  let reason = 'Buen margen para sostener brasas parejas.';
+
+  if (gust >= 70 || wind >= 55 || precipitationProbability >= 75) {
+    status = 'riesgoso';
+    reason = 'Rafagas o lluvia con riesgo alto para prender fuego afuera.';
+  } else if (roundedScore < 62 || gust >= 45 || wind >= 35 || precipitationProbability >= 45) {
+    status = 'usable';
+    reason = 'Se puede, pero conviene usar reparo y cargar mas brasa.';
+  }
+
+  if (!isCookingWindow) {
+    reason = 'Horario poco practico para cocinar, aunque el clima pueda ayudar.';
+  }
+
+  return {
+    time,
+    label: formatForecastLabel(time),
+    temp,
+    wind,
+    gust,
+    precipitationProbability,
+    score: roundedScore,
+    status,
+    reason,
+  };
+}
+
+export function getFeedbackAdjustment(history: SavedAsadoSession[]) {
+  const recent = history.slice(0, 5);
+  const faltaron = recent.filter((session) => session.feedback === 'falto').length;
+  const sobraron = recent.filter((session) => session.feedback === 'sobro').length;
+
+  if (faltaron >= 2) {
+    return {
+      title: 'Tu historial pide un margen extra',
+      message: 'En los ultimos asados falto comida. Suma 8-10% de carne o choris para este grupo.',
+      tone: 'text-amber-300 border-amber-500/30 bg-amber-500/10',
+    };
+  }
+
+  if (sobraron >= 2) {
+    return {
+      title: 'Tu historial viene generoso',
+      message: 'En los ultimos asados sobro bastante. Podes bajar 5-8% la carne si hay muchos extras.',
+      tone: 'text-sky-300 border-sky-500/30 bg-sky-500/10',
+    };
+  }
+
+  return {
+    title: 'Historial equilibrado',
+    message: 'Todavia no hay tendencia fuerte. Guarda 2 o 3 asados mas para calibrar cantidades.',
+    tone: 'text-emerald-300 border-emerald-500/30 bg-emerald-500/10',
+  };
+}
+
+function formatForecastLabel(time: string) {
+  return new Intl.DateTimeFormat('es-AR', {
+    weekday: 'short',
+    hour: '2-digit',
+    minute: '2-digit',
+  }).format(new Date(time));
 }
 
 export function getWeatherAdvice(scenario: ScenarioType, temp: number, wind: number) {
