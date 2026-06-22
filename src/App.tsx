@@ -51,6 +51,9 @@ import {
 const DEFAULT_MEAT_PRICE = 10000;
 const DEFAULT_COAL_PRICE = 2200;
 const DEFAULT_EXTRA_PRICE = 15000;
+const MEAT_PRICE_PRESETS = [10000, 12000, 15000, 18000];
+const COAL_PRICE_PRESETS = [1800, 2200, 2800, 3500];
+const EXTRA_PRICE_PRESETS = [0, 15000, 30000, 50000];
 const HISTORY_KEY = 'asado-pro-history-v1';
 const RIO_GALLEGOS_FORECAST_URL =
   'https://api.open-meteo.com/v1/forecast?latitude=-51.623&longitude=-69.2168&current=temperature_2m,wind_speed_10m,wind_gusts_10m,weather_code,precipitation&hourly=temperature_2m,wind_speed_10m,wind_gusts_10m,precipitation_probability&forecast_days=3&timezone=America%2FArgentina%2FBuenos_Aires&wind_speed_unit=kmh';
@@ -364,7 +367,7 @@ export default function App() {
   const updateDemographic = (key: keyof ParticipantConfig, value: number) => {
     const next = { ...demographics, [key]: Math.max(0, value) };
     setDemographics(next);
-    setTotalPeople(Math.max(1, next.hombres + next.mujeres + next.ninos));
+    setTotalPeople(Math.max(0, next.hombres + next.mujeres + next.ninos));
     triggerHaptic(8);
   };
 
@@ -537,11 +540,18 @@ Clima: ${temp}°C, viento ${wind} km/h
 ${forecastLine}
 Factor térmico: ${results.factorFuego}x
 
-Compra:
-- Desglose carne: ${meatBreakdownText}
+Resumen:
+- Carne total: ${results.carneTotal} kg (${meatBreakdownText})
+- Chorizos: ${results.choriTotal} unidades
+- Morcillas: ${results.morciTotal} unidades
+- Achuras: ${results.achurasTotal} kg
+- Carbón: ${results.carbonTotal} kg (${results.bolsasCarbon} bolsas)
+- Leña: ${results.lenaTotal} kg (${results.bolsasLena} atados)
+
+Lista de compras:
 ${listText}
 
-Escote estimado: $${currency.format(costPerPerson)} ARS por persona`;
+Presupuesto estimado: $${currency.format(totalCostEstimate)} ARS total / $${currency.format(costPerPerson)} ARS por persona`;
 
     if (navigator.share) {
       await navigator.share({ title: 'Asado Pro Río Gallegos', text }).catch(() => undefined);
@@ -565,7 +575,11 @@ Escote estimado: $${currency.format(costPerPerson)} ARS por persona`;
           options={CUT_TYPE_OPTIONS}
           onChange={(value) => setCutType(value as CutType)}
         />
-        <div className="mt-4 rounded-xl border border-white/10 bg-[#202020] p-4 text-xs leading-relaxed text-stone-300">
+        <p className="mt-3 text-xs font-semibold leading-relaxed text-stone-400">
+          El tipo de carne cambia los gramos base y el desglose en tiempo real. Para cortes puntuales,
+          agregalos en Lista editable con categoría Carnes.
+        </p>
+        <div className="mt-4 rounded-xl border border-white/15 bg-[#242424] p-4 text-xs leading-relaxed text-stone-300">
           <span className="font-black text-stone-100">Gramos base:</span>{' '}
           {results.gramsByProfile.hombres}g hombre · {results.gramsByProfile.mujeres}g mujer ·{' '}
           {results.gramsByProfile.ninos}g niño
@@ -656,7 +670,7 @@ Escote estimado: $${currency.format(costPerPerson)} ARS por persona`;
             value={customLabel}
             onChange={(event) => setCustomLabel(event.target.value)}
             placeholder="Agregar item"
-            className="min-h-12 rounded-xl border border-white/10 bg-[#1a1a1a] px-4 text-sm font-semibold text-stone-100 outline-none transition focus:border-[#ea580c]"
+            className="min-h-12 rounded-xl border border-white/15 bg-[#242424] px-4 text-sm font-semibold text-stone-100 outline-none transition focus:border-[#ea580c]"
           />
           <input
             value={customAmount}
@@ -664,12 +678,12 @@ Escote estimado: $${currency.format(costPerPerson)} ARS por persona`;
             inputMode="numeric"
             pattern="[0-9]*"
             placeholder="Cantidad"
-            className="min-h-12 rounded-xl border border-white/10 bg-[#1a1a1a] px-4 text-sm font-semibold text-stone-100 outline-none transition focus:border-[#ea580c]"
+            className="min-h-12 rounded-xl border border-white/15 bg-[#242424] px-4 text-sm font-semibold text-stone-100 outline-none transition focus:border-[#ea580c]"
           />
           <select
             value={customCategory}
             onChange={(event) => setCustomCategory(event.target.value as ChecklistCategory)}
-            className="min-h-12 rounded-xl border border-white/10 bg-[#1a1a1a] px-4 text-sm font-semibold text-stone-100 outline-none transition focus:border-[#ea580c]"
+            className="min-h-12 rounded-xl border border-white/15 bg-[#242424] px-4 text-sm font-semibold text-stone-100 outline-none transition focus:border-[#ea580c]"
           >
             <option value="carnes">Carnes</option>
             <option value="fuego">Fuego</option>
@@ -693,7 +707,7 @@ Escote estimado: $${currency.format(costPerPerson)} ARS por persona`;
               className={`flex items-center justify-between gap-3 rounded-xl border p-4 transition ${
                 item.checked
                   ? 'border-emerald-500/30 bg-emerald-500/10 text-stone-400'
-                  : 'border-white/10 bg-[#202020] text-stone-100 hover:border-[#ea580c]/50'
+                  : 'border-white/15 bg-[#242424] text-stone-100 hover:border-[#ea580c]/50'
               }`}
             >
               <button
@@ -748,21 +762,21 @@ Escote estimado: $${currency.format(costPerPerson)} ARS por persona`;
 
   return (
     <div className="min-h-screen bg-[#1a1a1a] text-stone-100">
-      <header className="sticky top-0 z-10 border-b border-white/10 bg-[#1a1a1a]/95 backdrop-blur">
+      <header className="sticky top-0 z-10 border-b border-white/15 bg-[#1a1a1a]/95 backdrop-blur">
         <div className="mx-auto flex max-w-[900px] flex-col gap-3 px-4 py-4 sm:flex-row sm:items-center sm:justify-between">
           <div>
-            <h1 className="text-2xl font-black tracking-tight text-stone-50">Asado Pro</h1>
+            <h1 className="text-2xl font-black tracking-tight text-stone-50">Asado Pro Río Gallegos</h1>
             <p className="text-xs font-semibold uppercase tracking-wider text-stone-400">
-              Río Gallegos · compras, clima, escote e historial
+              Calculadora de compras, clima, presupuesto e historial
             </p>
           </div>
 
           <div className="flex flex-wrap items-center gap-2">
             <span
-              className={`inline-flex items-center gap-1.5 rounded-full border px-3 py-1 text-xs font-bold ${
+              className={`inline-flex min-h-10 items-center gap-1.5 rounded-full border px-3 py-1 text-xs font-bold ${
                 onlineStatus
                   ? 'border-emerald-500/30 bg-emerald-500/10 text-emerald-300'
-                  : 'border-white/10 bg-white/5 text-stone-300'
+                  : 'border-white/15 bg-white/5 text-stone-300'
               }`}
             >
               {onlineStatus ? <Wifi className="h-3.5 w-3.5" /> : <WifiOff className="h-3.5 w-3.5" />}
@@ -773,7 +787,7 @@ Escote estimado: $${currency.format(costPerPerson)} ARS por persona`;
               <button
                 onClick={fetchForecast}
                 disabled={weather.loading || forecast.loading}
-                className="inline-flex min-h-8 items-center gap-1.5 rounded-full border border-white/10 bg-white/5 px-3 py-1 text-xs font-bold text-stone-200 transition hover:border-[#ea580c]/60 hover:text-white disabled:opacity-60"
+                className="inline-flex min-h-10 items-center gap-1.5 rounded-full border border-white/15 bg-white/5 px-3 py-1 text-xs font-bold text-stone-200 transition hover:border-[#ea580c]/60 hover:text-white disabled:opacity-60"
               >
                 <RefreshCw
                   className={`h-3.5 w-3.5 ${weather.loading || forecast.loading ? 'animate-spin' : ''}`}
@@ -785,7 +799,7 @@ Escote estimado: $${currency.format(costPerPerson)} ARS por persona`;
             <button
               type="button"
               onClick={() => setIsSettingsOpen(true)}
-              className="grid h-8 w-8 place-items-center rounded-full border border-white/10 bg-white/5 text-[#ea580c] transition hover:border-[#ea580c]/60 hover:bg-white/10"
+              className="grid h-10 w-10 place-items-center rounded-full border border-white/15 bg-white/5 text-[#ea580c] transition hover:border-[#ea580c]/60 hover:bg-white/10"
               aria-label="Abrir configuración"
               title="Configuración"
             >
@@ -795,7 +809,7 @@ Escote estimado: $${currency.format(costPerPerson)} ARS por persona`;
             {deferredPrompt && (
               <button
                 onClick={triggerInstall}
-                className="inline-flex min-h-8 items-center gap-1.5 rounded-full border border-[#ea580c]/40 bg-[#ea580c] px-3 py-1 text-xs font-bold text-white shadow-[0_8px_18px_rgba(234,88,12,0.18)] transition duration-200 ease-in-out hover:bg-[#c2410c]"
+                className="inline-flex min-h-10 items-center gap-1.5 rounded-full border border-[#ea580c]/40 bg-[#ea580c] px-3 py-1 text-xs font-bold text-white shadow-[0_8px_18px_rgba(234,88,12,0.18)] transition duration-200 ease-in-out hover:bg-[#c2410c]"
               >
                 <Download className="h-3.5 w-3.5" />
                 Instalar
@@ -811,10 +825,10 @@ Escote estimado: $${currency.format(costPerPerson)} ARS por persona`;
           onClick={() => setIsSettingsOpen(false)}
         >
           <div
-            className="mx-auto max-h-[calc(100vh-2rem)] max-w-2xl overflow-y-auto rounded-xl border border-white/10 bg-[#242424] p-6 shadow-2xl"
+            className="mx-auto max-h-[calc(100vh-2rem)] max-w-2xl overflow-y-auto rounded-xl border border-white/15 bg-[#262626] p-6 shadow-2xl"
             onClick={(event) => event.stopPropagation()}
           >
-            <div className="mb-4 flex items-center justify-between gap-3 border-b border-white/10 pb-3">
+            <div className="mb-4 flex items-center justify-between gap-3 border-b border-white/15 pb-3">
               <div className="flex min-w-0 items-center gap-2">
                 <Settings className="h-5 w-5 shrink-0 text-[#ea580c]" />
                 <h2 className="truncate text-sm font-black uppercase tracking-wider text-stone-100">
@@ -824,7 +838,7 @@ Escote estimado: $${currency.format(costPerPerson)} ARS por persona`;
               <button
                 type="button"
                 onClick={() => setIsSettingsOpen(false)}
-                className="grid h-12 w-12 shrink-0 place-items-center rounded-xl border border-white/10 bg-[#1a1a1a] text-stone-200 transition hover:border-[#ea580c]/60 hover:text-white"
+                className="grid h-12 w-12 shrink-0 place-items-center rounded-xl border border-white/15 bg-[#1a1a1a] text-stone-200 transition hover:border-[#ea580c]/60 hover:text-white"
                 aria-label="Cerrar configuración"
               >
                 <X className="h-4 w-4" />
@@ -851,7 +865,7 @@ Escote estimado: $${currency.format(costPerPerson)} ARS por persona`;
                   value={totalPeople || ''}
                   onInput={(event) => updatePeople(parseWholeNumber(event.currentTarget.value))}
                   placeholder="0"
-                  className="h-16 w-32 rounded-xl border border-white/10 bg-[#202020] text-center text-[2.5rem] font-black leading-none text-white outline-none transition focus:border-[#ea580c]"
+                  className="h-16 w-32 rounded-xl border border-white/15 bg-[#242424] text-center text-[2.5rem] font-black leading-none text-white outline-none transition focus:border-[#ea580c]"
                 />
                 <div className="text-xs font-bold uppercase tracking-wider text-stone-400">personas</div>
               </div>
@@ -860,39 +874,35 @@ Escote estimado: $${currency.format(costPerPerson)} ARS por persona`;
               </IconButton>
             </div>
 
-            <input
-              type="range"
-              min="0"
-              max="80"
-              value={totalPeople}
-              onInput={(event) => updatePeople(parseInt(event.currentTarget.value, 10))}
-              className="mt-4 h-12 w-full accent-[#ea580c]"
-            />
-
             <button
               onClick={() => setShowAdvancedDemo((value) => !value)}
-              className="mt-4 min-h-12 w-full rounded-xl border border-white/10 bg-[#202020] px-4 py-3 text-sm font-bold text-stone-100 transition duration-200 ease-in-out hover:border-[#ea580c]/60"
+              className="mt-4 min-h-12 w-full rounded-xl border border-white/15 bg-[#242424] px-4 py-3 text-sm font-bold text-stone-100 transition duration-200 ease-in-out hover:border-[#ea580c]/60"
             >
-              {showAdvancedDemo ? 'Usar reparto automático' : 'Editar hombres, mujeres y niños'}
+              {showAdvancedDemo ? 'Usar reparto automático' : 'Ajustar perfiles de comensales'}
             </button>
 
             {showAdvancedDemo && (
-              <div className="mt-3 grid gap-2 sm:grid-cols-3">
-                <Counter
-                  label="Hombres"
-                  value={demographics.hombres}
-                  onChange={(value) => updateDemographic('hombres', value)}
-                />
-                <Counter
-                  label="Mujeres"
-                  value={demographics.mujeres}
-                  onChange={(value) => updateDemographic('mujeres', value)}
-                />
-                <Counter
-                  label="Niños"
-                  value={demographics.ninos}
-                  onChange={(value) => updateDemographic('ninos', value)}
-                />
+              <div className="mt-4 rounded-xl border border-white/15 bg-[#242424] p-4">
+                <p className="text-sm font-semibold leading-relaxed text-stone-300">
+                  Ajustá el reparto para grupos reales; el total se recalcula con cada cambio.
+                </p>
+                <div className="mt-4 grid gap-3 sm:grid-cols-3">
+                  <Counter
+                    label="Hombres"
+                    value={demographics.hombres}
+                    onChange={(value) => updateDemographic('hombres', value)}
+                  />
+                  <Counter
+                    label="Mujeres"
+                    value={demographics.mujeres}
+                    onChange={(value) => updateDemographic('mujeres', value)}
+                  />
+                  <Counter
+                    label="Niños"
+                    value={demographics.ninos}
+                    onChange={(value) => updateDemographic('ninos', value)}
+                  />
+                </div>
               </div>
             )}
           </Panel>
@@ -919,7 +929,7 @@ Escote estimado: $${currency.format(costPerPerson)} ARS por persona`;
                   icon={<Wind className="h-4 w-4 text-[#ea580c]" />}
                 />
 
-                <div className={`mt-3 rounded-lg border p-3 text-sm font-bold ${adviceStatus.color}`}>
+                <div aria-live="polite" className={`mt-4 rounded-xl border p-4 text-sm font-bold ${adviceStatus.color}`}>
                   {adviceStatus.message}
                 </div>
 
@@ -945,7 +955,7 @@ Escote estimado: $${currency.format(costPerPerson)} ARS por persona`;
         <section className="flex flex-col gap-4 md:sticky md:top-24 md:self-start">
           <Panel title="Resultado" icon={<Flame className="h-5 w-5 text-[#ea580c]" />}>
             {isEmptyState ? (
-              <div className="rounded-xl border border-dashed border-white/15 bg-[#202020] p-6 text-center text-sm font-bold leading-relaxed text-stone-300">
+              <div className="rounded-xl border border-dashed border-white/20 bg-[#242424] p-5 text-center text-sm font-bold leading-relaxed text-stone-300 md:p-6">
                 Ingresá la cantidad de personas para ver las cantidades 🔥
               </div>
             ) : (
@@ -955,14 +965,28 @@ Escote estimado: $${currency.format(costPerPerson)} ARS por persona`;
                     emoji="🥩"
                     label="Carne"
                     value={`${results.carneTotal} kg`}
-                    detail={getCutTypeLabel(cutType)}
+                    detail={`${getCutTypeLabel(cutType)} · ≈ ${totalPeople} porciones`}
                     featured
                   />
                   <Metric
                     emoji="🌭"
                     label="Chorizos"
                     value={`${results.choriTotal}`}
-                    detail="unidades"
+                    detail={`unidades · ≈ ${formatPerPerson(results.choriTotal, totalPeople)} por persona`}
+                    featured
+                  />
+                  <Metric
+                    emoji="🩸"
+                    label="Morcillas"
+                    value={`${results.morciTotal}`}
+                    detail="unidades sugeridas"
+                    featured
+                  />
+                  <Metric
+                    emoji="🍢"
+                    label="Achuras"
+                    value={`${results.achurasTotal} kg`}
+                    detail="entrada sugerida"
                     featured
                   />
                   <Metric
@@ -981,7 +1005,7 @@ Escote estimado: $${currency.format(costPerPerson)} ARS por persona`;
                   />
                 </div>
 
-                <div className="mt-4 rounded-xl border border-white/10 bg-[#202020] p-6">
+                <div className="mt-4 rounded-xl border border-white/15 bg-[#242424] p-5 md:p-6">
                   <div className="text-xs font-bold uppercase tracking-wider text-stone-400">
                     Desglose carne
                   </div>
@@ -1000,11 +1024,16 @@ Escote estimado: $${currency.format(costPerPerson)} ARS por persona`;
                   </div>
                 </div>
 
-                <div className="mt-4 rounded-xl border border-white/10 bg-[#202020] p-6">
+                <div className="mt-4 rounded-xl border border-white/15 bg-[#242424] p-5 md:p-6">
                   <div className="flex items-center justify-between gap-4">
-                    <span className="text-xs font-bold uppercase tracking-wider text-stone-400">
-                      Factor térmico
-                    </span>
+                    <div>
+                      <span className="text-xs font-bold uppercase tracking-wider text-stone-400">
+                        Factor térmico
+                      </span>
+                      <p className="mt-1 text-xs leading-relaxed text-stone-400">
+                        Parte de 1x en quincho. Afuera suma penalización por frío menor a 15°C y viento; chulengo reduce ese impacto.
+                      </p>
+                    </div>
                     <span className="font-mono text-[2.5rem] font-black leading-none text-[#ea580c]">
                       {results.factorFuego}x
                     </span>
@@ -1015,29 +1044,44 @@ Escote estimado: $${currency.format(costPerPerson)} ARS por persona`;
             )}
           </Panel>
 
-          <Panel title="Escote" icon={<DollarSign className="h-5 w-5 text-[#ea580c]" />}>
-            <Slider
+          <Panel title="Presupuesto" icon={<DollarSign className="h-5 w-5 text-[#ea580c]" />}>
+            <CostInput
               label="Precio carne"
               value={costs.meatPricePerKg}
-              min={9000}
-              max={200000}
-              step={1000}
               unit="ARS/kg"
               onChange={(value) => setCosts((current) => ({ ...current, meatPricePerKg: value }))}
             />
-            <Slider
+            <PresetButtons
+              label="Carne"
+              values={MEAT_PRICE_PRESETS}
+              onSelect={(value) => setCosts((current) => ({ ...current, meatPricePerKg: value }))}
+            />
+            <CostInput
+              label="Bolsa de carbón"
+              value={costs.carbonPricePerBag}
+              unit="ARS"
+              onChange={(value) => setCosts((current) => ({ ...current, carbonPricePerBag: value }))}
+            />
+            <PresetButtons
+              label="Carbón"
+              values={COAL_PRICE_PRESETS}
+              onSelect={(value) => setCosts((current) => ({ ...current, carbonPricePerBag: value }))}
+            />
+            <CostInput
               label="Extras"
               value={costs.extraExpenses}
-              min={0}
-              max={600000}
-              step={10000}
               unit="ARS"
               onChange={(value) => setCosts((current) => ({ ...current, extraExpenses: value }))}
             />
+            <PresetButtons
+              label="Extras"
+              values={EXTRA_PRICE_PRESETS}
+              onSelect={(value) => setCosts((current) => ({ ...current, extraExpenses: value }))}
+            />
 
             {isEmptyState ? (
-              <div className="mt-4 rounded-xl border border-dashed border-white/15 bg-[#202020] p-6 text-sm font-bold text-stone-300">
-                Definí los comensales para estimar el escote.
+              <div className="mt-4 rounded-xl border border-dashed border-white/20 bg-[#242424] p-5 text-sm font-bold text-stone-300 md:p-6">
+                Definí los comensales para estimar el presupuesto.
               </div>
             ) : (
               <div key={`cost-${resultsAnimationKey}`} className="result-animate mt-4 grid gap-4 sm:grid-cols-2">
@@ -1091,9 +1135,9 @@ function ForecastPanel({
   onRefresh: () => void;
 }) {
   return (
-    <Panel title="Pronóstico de parrilla" icon={<CloudSun className="h-5 w-5 text-sky-300" />}>
+    <Panel title="Pronóstico de parrilla" icon={<CloudSun className="h-5 w-5 text-[#ea580c]" />}>
       {forecast.bestSlot ? (
-        <div className={`rounded-lg border p-3 ${forecastTone(forecast.bestSlot.status)}`}>
+        <div className={`rounded-xl border p-4 ${forecastTone(forecast.bestSlot.status)}`}>
           <div className="flex items-center justify-between gap-3">
             <div>
               <div className="text-xs font-bold uppercase tracking-wider opacity-80">Mejor horario</div>
@@ -1104,9 +1148,25 @@ function ForecastPanel({
           <p className="mt-2 text-sm font-semibold">{forecast.bestSlot.reason}</p>
         </div>
       ) : (
-        <div className="rounded-lg border border-sky-500/30 bg-sky-500/10 p-3 text-sm font-bold text-sky-200">
+        <div className="rounded-xl border border-white/15 bg-[#242424] p-4 text-sm font-bold text-stone-200">
           Consultá Open-Meteo para elegir la mejor ventana de fuego de las próximas 72 horas.
         </div>
+      )}
+
+      {forecast.loading && (
+        <p aria-live="polite" className="mt-3 flex items-center gap-2 text-sm font-bold text-stone-200">
+          <RefreshCw className="h-4 w-4 animate-spin text-[#ea580c]" />
+          Consultando Open-Meteo...
+        </p>
+      )}
+
+      {forecast.updatedAt && (
+        <p className="mt-3 text-xs font-semibold text-stone-400">
+          Actualizado {new Intl.DateTimeFormat('es-AR', {
+            hour: '2-digit',
+            minute: '2-digit',
+          }).format(new Date(forecast.updatedAt))}
+        </p>
       )}
 
       {forecast.error && (
@@ -1116,9 +1176,9 @@ function ForecastPanel({
         </p>
       )}
 
-      <div className="mt-3 grid gap-2 sm:grid-cols-2">
+      <div className="mt-4 grid gap-3 sm:grid-cols-2">
         {forecast.slots.map((slot) => (
-          <div key={slot.time} className="rounded-xl border border-white/10 bg-[#202020] p-4">
+          <div key={slot.time} className="rounded-xl border border-white/15 bg-[#242424] p-4">
             <div className="flex items-center justify-between gap-2">
               <span className="flex items-center gap-1.5 text-sm font-black text-stone-100">
                 <Clock className="h-3.5 w-3.5 text-[#ea580c]" />
@@ -1141,10 +1201,10 @@ function ForecastPanel({
       <button
         onClick={onRefresh}
         disabled={forecast.loading}
-        className="mt-3 inline-flex w-full items-center justify-center gap-2 rounded-lg border border-sky-500/30 bg-sky-500/10 px-4 py-3 text-sm font-black text-sky-200 transition hover:bg-sky-500/20 disabled:opacity-60"
+        className="mt-4 inline-flex min-h-12 w-full items-center justify-center gap-2 rounded-xl border border-[#ea580c]/40 bg-[#ea580c] px-4 py-3 text-sm font-black text-white shadow-[0_10px_22px_rgba(234,88,12,0.18)] transition duration-200 ease-in-out hover:bg-[#c2410c] disabled:opacity-60"
       >
         <RefreshCw className={`h-4 w-4 ${forecast.loading ? 'animate-spin' : ''}`} />
-        Actualizar pronóstico
+        {forecast.loading ? 'Actualizando...' : 'Actualizar pronóstico'}
       </button>
     </Panel>
   );
@@ -1163,20 +1223,24 @@ function HistoryContent({
 }) {
   return (
     <>
-      <div className={`rounded-lg border p-3 ${adjustment.tone}`}>
+      <div className={`rounded-xl border p-4 ${adjustment.tone}`}>
         <div className="text-sm font-black">{adjustment.title}</div>
         <p className="mt-1 text-xs leading-relaxed">{adjustment.message}</p>
       </div>
 
-      <div className="mt-3 grid gap-2 sm:grid-cols-3">
+      <p className="mt-3 text-xs font-semibold leading-relaxed text-stone-400">
+        Guardá cómo salió el asado para calibrar futuras compras.
+      </p>
+
+      <div className="mt-3 grid gap-3 sm:grid-cols-3">
         <FeedbackButton label="Perfecto" tone="emerald" onClick={() => onSave('perfecto')} />
         <FeedbackButton label="Sobró" tone="sky" onClick={() => onSave('sobro')} />
         <FeedbackButton label="Faltó" tone="amber" onClick={() => onSave('falto')} />
       </div>
 
-      <div className="mt-3 space-y-2">
+      <div className="mt-4 space-y-3">
         {history.length === 0 && (
-          <div className="rounded-xl border border-white/10 bg-[#202020] p-4 text-sm text-stone-400">
+          <div className="rounded-xl border border-white/15 bg-[#242424] p-4 text-sm text-stone-400">
             Guardá el resultado real de cada asado para calibrar futuras compras.
           </div>
         )}
@@ -1184,7 +1248,7 @@ function HistoryContent({
         {history.map((session) => (
           <div
             key={session.id}
-            className="flex items-center justify-between gap-3 rounded-xl border border-white/10 bg-[#202020] p-4"
+            className="flex items-center justify-between gap-3 rounded-xl border border-white/15 bg-[#242424] p-4"
           >
             <div className="min-w-0">
               <div className="truncate text-sm font-black text-stone-100">
@@ -1231,7 +1295,7 @@ function AccordionItem({
   badge?: string;
 }) {
   return (
-    <div className="overflow-hidden rounded-xl border border-white/10 bg-[#202020]">
+    <div className="overflow-hidden rounded-xl border border-white/15 bg-[#242424]">
       <button
         type="button"
         onClick={onToggle}
@@ -1254,7 +1318,7 @@ function AccordionItem({
           />
         </span>
       </button>
-      {open && <div className="border-t border-white/10 p-4">{children}</div>}
+      {open && <div className="border-t border-white/15 p-4">{children}</div>}
     </div>
   );
 }
@@ -1269,8 +1333,8 @@ function Panel({
   children: ReactNode;
 }) {
   return (
-    <section className="rounded-xl border border-white/10 bg-[#242424] p-6 shadow-[0_18px_45px_rgba(0,0,0,0.22)]">
-      <div className="mb-4 flex items-center gap-2 border-b border-white/10 pb-3">
+    <section className="rounded-xl border border-white/15 bg-[#262626] p-5 shadow-[0_18px_45px_rgba(0,0,0,0.22)] md:p-6">
+      <div className="mb-4 flex items-center gap-2 border-b border-white/15 pb-3">
         {icon}
         <h2 className="text-sm font-black uppercase tracking-wider text-stone-100">{title}</h2>
       </div>
@@ -1291,7 +1355,7 @@ function IconButton({
   return (
     <button
       onClick={onClick}
-      className="grid h-12 w-12 place-items-center rounded-xl border border-white/10 bg-[#202020] text-[#ea580c] transition duration-200 ease-in-out hover:border-[#ea580c]/60 hover:bg-white/5"
+      className="grid h-12 w-12 place-items-center rounded-xl border border-white/15 bg-[#242424] text-[#ea580c] transition duration-200 ease-in-out hover:border-[#ea580c]/60 hover:bg-white/5"
       aria-label={label}
     >
       {children}
@@ -1309,7 +1373,7 @@ function Counter({
   onChange: (value: number) => void;
 }) {
   return (
-    <div className="rounded-xl border border-white/10 bg-[#202020] p-4">
+    <div className="rounded-xl border border-white/15 bg-[#242424] p-4">
       <div className="mb-2 text-xs font-bold uppercase tracking-wider text-stone-400">{label}</div>
       <div className="flex items-center justify-between gap-2">
         <IconButton label={`Restar ${label}`} onClick={() => onChange(value - 1)}>
@@ -1342,7 +1406,7 @@ function Segmented({
           className={`min-h-12 rounded-xl border px-4 py-3 text-sm font-black transition duration-200 ease-in-out ${
             value === key
               ? 'border-[#ea580c] bg-[#ea580c]/10 text-white'
-              : 'border-white/10 bg-[#202020] text-stone-400 hover:border-[#ea580c]/50 hover:text-stone-100'
+              : 'border-white/15 bg-[#242424] text-stone-400 hover:border-[#ea580c]/50 hover:text-stone-100'
           }`}
         >
           {label}
@@ -1367,7 +1431,7 @@ function ToggleButton({
       className={`min-h-12 rounded-xl border px-4 py-3 text-sm font-black transition duration-200 ease-in-out ${
         active
           ? 'border-[#ea580c] bg-[#ea580c]/10 text-white'
-          : 'border-white/10 bg-[#202020] text-stone-400 hover:border-[#ea580c]/50 hover:text-stone-100'
+          : 'border-white/15 bg-[#242424] text-stone-400 hover:border-[#ea580c]/50 hover:text-stone-100'
       }`}
     >
       {label}
@@ -1398,6 +1462,66 @@ function FeedbackButton({
       <Save className="h-3.5 w-3.5" />
       {label}
     </button>
+  );
+}
+
+function CostInput({
+  label,
+  value,
+  unit,
+  onChange,
+}: {
+  label: string;
+  value: number;
+  unit: string;
+  onChange: (value: number) => void;
+}) {
+  return (
+    <label className="mt-4 block">
+      <span className="mb-2 flex items-center justify-between gap-3">
+        <span className="text-xs font-bold uppercase tracking-wider text-stone-400">{label}</span>
+        <span className="text-xs font-semibold text-stone-500">{unit}</span>
+      </span>
+      <input
+        aria-label={label}
+        inputMode="numeric"
+        pattern="[0-9]*"
+        value={value || ''}
+        onInput={(event) => onChange(parseWholeNumber(event.currentTarget.value))}
+        placeholder="0"
+        className="min-h-12 w-full rounded-xl border border-white/15 bg-[#242424] px-4 text-lg font-black text-stone-50 outline-none transition focus:border-[#ea580c]"
+      />
+    </label>
+  );
+}
+
+function PresetButtons({
+  label,
+  values,
+  onSelect,
+}: {
+  label: string;
+  values: number[];
+  onSelect: (value: number) => void;
+}) {
+  return (
+    <div className="mt-3">
+      <div className="mb-2 text-xs font-bold uppercase tracking-wider text-stone-500">
+        {label} rápido
+      </div>
+      <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
+        {values.map((value) => (
+          <button
+            key={value}
+            type="button"
+            onClick={() => onSelect(value)}
+            className="min-h-12 rounded-xl border border-white/15 bg-[#242424] px-3 py-2 text-sm font-black text-stone-100 transition duration-200 ease-in-out hover:border-[#ea580c]/60"
+          >
+            ${currency.format(value)}
+          </button>
+        ))}
+      </div>
+    </div>
   );
 }
 
@@ -1437,6 +1561,10 @@ function Slider({
         max={max}
         step={step}
         value={value}
+        aria-label={label}
+        aria-valuemin={min}
+        aria-valuemax={max}
+        aria-valuenow={value}
         onInput={(event) => onChange(parseInt(event.currentTarget.value, 10))}
         className="h-12 w-full accent-[#ea580c]"
       />
@@ -1460,7 +1588,7 @@ function Metric({
   featured?: boolean;
 }) {
   return (
-    <div className="rounded-xl border border-white/10 bg-[#202020] p-6 shadow-[0_12px_30px_rgba(0,0,0,0.16)]">
+    <div className="rounded-xl border border-white/15 bg-[#242424] p-5 shadow-[0_12px_30px_rgba(0,0,0,0.16)] md:p-6">
       <div className="flex items-start justify-between gap-3">
         <div className="min-w-0 text-xs font-bold uppercase tracking-wider text-stone-400">{label}</div>
         {emoji && <div className="shrink-0 text-2xl leading-none">{emoji}</div>}
@@ -1505,6 +1633,11 @@ function meatEmoji(label: string) {
   if (normalized.includes('cerdo')) return '🥓';
   if (normalized.includes('tira') || normalized.includes('hueso')) return '🍖';
   return '🥩';
+}
+
+function formatPerPerson(amount: number, people: number) {
+  if (people <= 0) return '0';
+  return (Math.round((amount / people) * 10) / 10).toLocaleString('es-AR');
 }
 
 function feedbackLabel(feedback: AsadoFeedback) {

@@ -1,4 +1,4 @@
-const CACHE_NAME = 'asado-pro-cache-v2';
+const CACHE_NAME = 'asado-pro-cache-v3';
 const ASSETS_TO_CACHE = ['/', '/index.html', '/manifest.json', '/icon.svg'];
 
 self.addEventListener('install', (event) => {

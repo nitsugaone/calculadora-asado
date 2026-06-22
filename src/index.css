@@ -11,6 +11,11 @@ body {
   background: #1a1a1a;
 }
 
+:focus-visible {
+  outline: 2px solid #ea580c;
+  outline-offset: 3px;
+}
+
 .safe-area-form {
   padding-bottom: calc(1.25rem + env(safe-area-inset-bottom));
 }
