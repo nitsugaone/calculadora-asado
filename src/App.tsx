@@ -2,6 +2,7 @@ import { type ReactNode, useEffect, useMemo, useState } from 'react';
 import {
   AlertTriangle,
   Check,
+  ChevronDown,
   Clock,
   CloudSun,
   DollarSign,
@@ -122,6 +123,16 @@ export default function App() {
   const [history, setHistory] = useState<SavedAsadoSession[]>([]);
   const [deferredPrompt, setDeferredPrompt] = useState<any>(null);
   const [notice, setNotice] = useState<string | null>(null);
+  const [openSettings, setOpenSettings] = useState<Record<string, boolean>>({
+    corte: true,
+    bebidas: false,
+    lista: false,
+    historial: true,
+  });
+
+  const toggleSettingsSection = (section: string) => {
+    setOpenSettings((current) => ({ ...current, [section]: !current[section] }));
+  };
 
   useEffect(() => {
     if (!showAdvancedDemo) {
@@ -619,117 +630,49 @@ Escote estimado: $${currency.format(costPerPerson)} ARS por persona`;
             )}
           </Panel>
 
-          <Panel title="Corte y fuego" icon={<Flame className="h-5 w-5 text-red-400" />}>
-            <Segmented
-              value={cutType}
-              options={CUT_TYPE_OPTIONS}
-              onChange={(value) => setCutType(value as CutType)}
-            />
-            <div className="mt-3 rounded-lg border border-amber-900/50 bg-[#150d0b] p-3 text-xs leading-relaxed text-stone-300">
-              <span className="font-black text-amber-100">Gramos base:</span>{' '}
-              {results.gramsByProfile.hombres}g hombre · {results.gramsByProfile.mujeres}g mujer ·{' '}
-              {results.gramsByProfile.ninos}g niño
-            </div>
+          {scenario !== 'quincho' && (
+            <>
+              <Panel title="Clima local" icon={<Wind className="h-5 w-5 text-sky-300" />}>
+                <Slider
+                  label="Temperatura"
+                  value={temp}
+                  min={-10}
+                  max={35}
+                  unit="°C"
+                  onChange={setTemp}
+                  icon={<Thermometer className="h-4 w-4 text-sky-300" />}
+                />
+                <Slider
+                  label="Viento"
+                  value={wind}
+                  min={0}
+                  max={110}
+                  unit="km/h"
+                  onChange={setWind}
+                  icon={<Wind className="h-4 w-4 text-orange-300" />}
+                />
 
-            <div className="mt-4">
-              <Segmented
-                value={scenario}
-                options={[
-                  ['quincho', 'Quincho'],
-                  ['chulengo', 'Chulengo'],
-                  ['afuera', 'Intemperie'],
-                ]}
-                onChange={(value) => setScenario(value as ScenarioType)}
-              />
-            </div>
-          </Panel>
+                <div className={`mt-3 rounded-lg border p-3 text-sm font-bold ${adviceStatus.color}`}>
+                  {adviceStatus.message}
+                </div>
 
-          <Panel title="Bebidas y extras" icon={<ListPlus className="h-5 w-5 text-emerald-300" />}>
-            <div className="grid gap-2 sm:grid-cols-3">
-              <ToggleButton
-                active={extrasConfig.includeAlcohol}
-                label="Con alcohol"
-                onClick={() =>
-                  setExtrasConfig((current) => ({
-                    ...current,
-                    includeAlcohol: !current.includeAlcohol,
-                  }))
-                }
-              />
-              <ToggleButton
-                active={extrasConfig.saladMode === 'abundante'}
-                label="Ensalada fuerte"
-                onClick={() =>
-                  setExtrasConfig((current) => ({
-                    ...current,
-                    saladMode: current.saladMode === 'abundante' ? 'simple' : 'abundante',
-                  }))
-                }
-              />
-              <ToggleButton
-                active={extrasConfig.breadMode === 'generoso'}
-                label="Pan generoso"
-                onClick={() =>
-                  setExtrasConfig((current) => ({
-                    ...current,
-                    breadMode: current.breadMode === 'generoso' ? 'normal' : 'generoso',
-                  }))
-                }
-              />
-            </div>
+                {weather.isReal && (
+                  <p className="mt-2 text-xs text-sky-300">
+                    {weather.locationName}: {weather.conditionText}, {weather.temp}°C, viento{' '}
+                    {weather.wind} km/h.
+                  </p>
+                )}
+                {weather.error && (
+                  <p className="mt-2 flex items-center gap-1.5 text-xs text-rose-300">
+                    <AlertTriangle className="h-3.5 w-3.5" />
+                    {weather.error}
+                  </p>
+                )}
+              </Panel>
 
-            <div className="mt-4 grid grid-cols-2 gap-3 sm:grid-cols-4">
-              <Metric label="Agua" value={`${extras.waterLiters} l`} detail="base" compact />
-              <Metric label="Gaseosa" value={`${extras.sodaLiters} l`} detail="jugo/soda" compact />
-              <Metric label="Hielo" value={`${extras.iceKg} kg`} detail="conservadora" compact />
-              <Metric
-                label="Alcohol"
-                value={extrasConfig.includeAlcohol ? `${extras.beerLiters} l` : '0 l'}
-                detail={extrasConfig.includeAlcohol ? `${extras.wineBottles} vinos` : 'sin alcohol'}
-                compact
-              />
-            </div>
-          </Panel>
-
-          <Panel title="Clima local" icon={<Wind className="h-5 w-5 text-sky-300" />}>
-            <Slider
-              label="Temperatura"
-              value={temp}
-              min={-10}
-              max={35}
-              unit="°C"
-              onChange={setTemp}
-              icon={<Thermometer className="h-4 w-4 text-sky-300" />}
-            />
-            <Slider
-              label="Viento"
-              value={wind}
-              min={0}
-              max={110}
-              unit="km/h"
-              onChange={setWind}
-              icon={<Wind className="h-4 w-4 text-orange-300" />}
-            />
-
-            <div className={`mt-3 rounded-lg border p-3 text-sm font-bold ${adviceStatus.color}`}>
-              {adviceStatus.message}
-            </div>
-
-            {weather.isReal && (
-              <p className="mt-2 text-xs text-sky-300">
-                {weather.locationName}: {weather.conditionText}, {weather.temp}°C, viento{' '}
-                {weather.wind} km/h.
-              </p>
-            )}
-            {weather.error && (
-              <p className="mt-2 flex items-center gap-1.5 text-xs text-rose-300">
-                <AlertTriangle className="h-3.5 w-3.5" />
-                {weather.error}
-              </p>
-            )}
-          </Panel>
-
-          <ForecastPanel forecast={forecast} onRefresh={fetchForecast} />
+              <ForecastPanel forecast={forecast} onRefresh={fetchForecast} />
+            </>
+          )}
         </section>
 
         <section className="flex flex-col gap-4">
@@ -776,87 +719,194 @@ Escote estimado: $${currency.format(costPerPerson)} ARS por persona`;
             </div>
           </Panel>
 
-          <Panel title="Lista editable" icon={<Check className="h-5 w-5 text-emerald-300" />}>
-            <div className="mb-3 h-2 overflow-hidden rounded-full bg-[#100907]">
-              <div
-                className="h-full rounded-full bg-gradient-to-r from-orange-500 to-emerald-400"
-                style={{ width: `${progressPercent}%` }}
-              />
-            </div>
-
-            <div className="grid gap-2 sm:grid-cols-[1fr_0.75fr_0.7fr_auto]">
-              <input
-                value={customLabel}
-                onChange={(event) => setCustomLabel(event.target.value)}
-                placeholder="Agregar item"
-                className="min-h-10 rounded-lg border border-amber-900/70 bg-[#100907] px-3 text-sm font-semibold text-stone-100 outline-none focus:border-orange-500"
-              />
-              <input
-                value={customAmount}
-                onChange={(event) => setCustomAmount(event.target.value)}
-                placeholder="Cantidad"
-                className="min-h-10 rounded-lg border border-amber-900/70 bg-[#100907] px-3 text-sm font-semibold text-stone-100 outline-none focus:border-orange-500"
-              />
-              <select
-                value={customCategory}
-                onChange={(event) => setCustomCategory(event.target.value as ChecklistCategory)}
-                className="min-h-10 rounded-lg border border-amber-900/70 bg-[#100907] px-3 text-sm font-semibold text-stone-100 outline-none focus:border-orange-500"
+          <Panel title="Ajustes e historial" icon={<History className="h-5 w-5 text-orange-300" />}>
+            <div className="space-y-3">
+              <AccordionItem
+                title="Corte y fuego"
+                icon={<Flame className="h-4 w-4 text-red-400" />}
+                open={openSettings.corte}
+                onToggle={() => toggleSettingsSection('corte')}
               >
-                <option value="carnes">Carnes</option>
-                <option value="fuego">Fuego</option>
-                <option value="bebidas">Bebidas</option>
-                <option value="acompanamientos">Acomp.</option>
-                <option value="otros">Otros</option>
-              </select>
-              <button
-                onClick={addCustomItem}
-                className="grid min-h-10 place-items-center rounded-lg bg-orange-600 px-3 text-white transition hover:bg-orange-500"
-                aria-label="Agregar item"
-              >
-                <Plus className="h-4 w-4" />
-              </button>
-            </div>
+                <Segmented
+                  value={cutType}
+                  options={CUT_TYPE_OPTIONS}
+                  onChange={(value) => setCutType(value as CutType)}
+                />
+                <div className="mt-3 rounded-lg border border-amber-900/50 bg-[#150d0b] p-3 text-xs leading-relaxed text-stone-300">
+                  <span className="font-black text-amber-100">Gramos base:</span>{' '}
+                  {results.gramsByProfile.hombres}g hombre · {results.gramsByProfile.mujeres}g mujer ·{' '}
+                  {results.gramsByProfile.ninos}g niño
+                </div>
 
-            <div className="mt-3 max-h-96 space-y-2 overflow-y-auto pr-1">
-              {allChecklist.map((item) => (
-                <div
-                  key={item.id}
-                  className={`flex items-center justify-between gap-3 rounded-lg border p-3 transition ${
-                    item.checked
-                      ? 'border-emerald-500/30 bg-emerald-500/10 text-stone-400'
-                      : 'border-amber-900/60 bg-[#150d0b] text-stone-100 hover:border-amber-700'
-                  }`}
-                >
-                  <button
-                    onClick={() => toggleChecklistItem(item)}
-                    className="flex min-w-0 flex-1 items-center gap-2 text-left text-sm font-bold"
+                <div className="mt-4">
+                  <Segmented
+                    value={scenario}
+                    options={[
+                      ['quincho', 'Quincho'],
+                      ['chulengo', 'Chulengo'],
+                      ['afuera', 'Intemperie'],
+                    ]}
+                    onChange={(value) => setScenario(value as ScenarioType)}
+                  />
+                </div>
+              </AccordionItem>
+
+              <AccordionItem
+                title="Bebidas y extras"
+                icon={<ListPlus className="h-4 w-4 text-emerald-300" />}
+                open={openSettings.bebidas}
+                onToggle={() => toggleSettingsSection('bebidas')}
+              >
+                <div className="grid gap-2 sm:grid-cols-3">
+                  <ToggleButton
+                    active={extrasConfig.includeAlcohol}
+                    label="Con alcohol"
+                    onClick={() =>
+                      setExtrasConfig((current) => ({
+                        ...current,
+                        includeAlcohol: !current.includeAlcohol,
+                      }))
+                    }
+                  />
+                  <ToggleButton
+                    active={extrasConfig.saladMode === 'abundante'}
+                    label="Ensalada fuerte"
+                    onClick={() =>
+                      setExtrasConfig((current) => ({
+                        ...current,
+                        saladMode: current.saladMode === 'abundante' ? 'simple' : 'abundante',
+                      }))
+                    }
+                  />
+                  <ToggleButton
+                    active={extrasConfig.breadMode === 'generoso'}
+                    label="Pan generoso"
+                    onClick={() =>
+                      setExtrasConfig((current) => ({
+                        ...current,
+                        breadMode: current.breadMode === 'generoso' ? 'normal' : 'generoso',
+                      }))
+                    }
+                  />
+                </div>
+
+                <div className="mt-4 grid grid-cols-2 gap-3 sm:grid-cols-4">
+                  <Metric label="Agua" value={`${extras.waterLiters} l`} detail="base" compact />
+                  <Metric label="Gaseosa" value={`${extras.sodaLiters} l`} detail="jugo/soda" compact />
+                  <Metric label="Hielo" value={`${extras.iceKg} kg`} detail="conservadora" compact />
+                  <Metric
+                    label="Alcohol"
+                    value={extrasConfig.includeAlcohol ? `${extras.beerLiters} l` : '0 l'}
+                    detail={extrasConfig.includeAlcohol ? `${extras.wineBottles} vinos` : 'sin alcohol'}
+                    compact
+                  />
+                </div>
+              </AccordionItem>
+
+              <AccordionItem
+                title="Lista editable"
+                icon={<Check className="h-4 w-4 text-emerald-300" />}
+                open={openSettings.lista}
+                onToggle={() => toggleSettingsSection('lista')}
+                badge={`${checkedCount}/${allChecklist.length}`}
+              >
+                <div className="mb-3 h-2 overflow-hidden rounded-full bg-[#100907]">
+                  <div
+                    className="h-full rounded-full bg-gradient-to-r from-orange-500 to-emerald-400"
+                    style={{ width: `${progressPercent}%` }}
+                  />
+                </div>
+
+                <div className="grid gap-2 sm:grid-cols-[1fr_0.75fr_0.7fr_auto]">
+                  <input
+                    value={customLabel}
+                    onChange={(event) => setCustomLabel(event.target.value)}
+                    placeholder="Agregar item"
+                    className="min-h-10 rounded-lg border border-amber-900/70 bg-[#100907] px-3 text-sm font-semibold text-stone-100 outline-none focus:border-orange-500"
+                  />
+                  <input
+                    value={customAmount}
+                    onChange={(event) => setCustomAmount(event.target.value)}
+                    placeholder="Cantidad"
+                    className="min-h-10 rounded-lg border border-amber-900/70 bg-[#100907] px-3 text-sm font-semibold text-stone-100 outline-none focus:border-orange-500"
+                  />
+                  <select
+                    value={customCategory}
+                    onChange={(event) => setCustomCategory(event.target.value as ChecklistCategory)}
+                    className="min-h-10 rounded-lg border border-amber-900/70 bg-[#100907] px-3 text-sm font-semibold text-stone-100 outline-none focus:border-orange-500"
                   >
-                    <span
-                      className={`grid h-5 w-5 shrink-0 place-items-center rounded border ${
-                        item.checked ? 'border-emerald-400 bg-emerald-500 text-white' : 'border-amber-800'
+                    <option value="carnes">Carnes</option>
+                    <option value="fuego">Fuego</option>
+                    <option value="bebidas">Bebidas</option>
+                    <option value="acompanamientos">Acomp.</option>
+                    <option value="otros">Otros</option>
+                  </select>
+                  <button
+                    onClick={addCustomItem}
+                    className="grid min-h-10 place-items-center rounded-lg bg-orange-600 px-3 text-white transition hover:bg-orange-500"
+                    aria-label="Agregar item"
+                  >
+                    <Plus className="h-4 w-4" />
+                  </button>
+                </div>
+
+                <div className="mt-3 max-h-96 space-y-2 overflow-y-auto pr-1">
+                  {allChecklist.map((item) => (
+                    <div
+                      key={item.id}
+                      className={`flex items-center justify-between gap-3 rounded-lg border p-3 transition ${
+                        item.checked
+                          ? 'border-emerald-500/30 bg-emerald-500/10 text-stone-400'
+                          : 'border-amber-900/60 bg-[#150d0b] text-stone-100 hover:border-amber-700'
                       }`}
                     >
-                      {item.checked && <Check className="h-3.5 w-3.5" />}
-                    </span>
-                    <span className="min-w-0">
-                      <span className="block truncate">{item.label}</span>
-                      <span className="text-[11px] uppercase tracking-wider text-stone-500">
-                        {categoryLabel(item.category)}
-                      </span>
-                    </span>
-                  </button>
-                  <span className="shrink-0 text-xs font-black text-orange-300">{item.amount}</span>
-                  {item.custom && (
-                    <button
-                      onClick={() => removeCustomItem(item.id)}
-                      className="grid h-8 w-8 shrink-0 place-items-center rounded-lg border border-rose-500/30 text-rose-300"
-                      aria-label={`Quitar ${item.label}`}
-                    >
-                      <Trash2 className="h-3.5 w-3.5" />
-                    </button>
-                  )}
+                      <button
+                        onClick={() => toggleChecklistItem(item)}
+                        className="flex min-w-0 flex-1 items-center gap-2 text-left text-sm font-bold"
+                      >
+                        <span
+                          className={`grid h-5 w-5 shrink-0 place-items-center rounded border ${
+                            item.checked ? 'border-emerald-400 bg-emerald-500 text-white' : 'border-amber-800'
+                          }`}
+                        >
+                          {item.checked && <Check className="h-3.5 w-3.5" />}
+                        </span>
+                        <span className="min-w-0">
+                          <span className="block truncate">{item.label}</span>
+                          <span className="text-[11px] uppercase tracking-wider text-stone-500">
+                            {categoryLabel(item.category)}
+                          </span>
+                        </span>
+                      </button>
+                      <span className="shrink-0 text-xs font-black text-orange-300">{item.amount}</span>
+                      {item.custom && (
+                        <button
+                          onClick={() => removeCustomItem(item.id)}
+                          className="grid h-8 w-8 shrink-0 place-items-center rounded-lg border border-rose-500/30 text-rose-300"
+                          aria-label={`Quitar ${item.label}`}
+                        >
+                          <Trash2 className="h-3.5 w-3.5" />
+                        </button>
+                      )}
+                    </div>
+                  ))}
                 </div>
-              ))}
+              </AccordionItem>
+
+              <AccordionItem
+                title="Historial y ajuste"
+                icon={<History className="h-4 w-4 text-orange-300" />}
+                open={openSettings.historial}
+                onToggle={() => toggleSettingsSection('historial')}
+                badge={`${history.length}`}
+              >
+                <HistoryContent
+                  history={history}
+                  adjustment={feedbackAdjustment}
+                  onSave={saveSession}
+                  onDelete={deleteSession}
+                />
+              </AccordionItem>
             </div>
           </Panel>
 
@@ -907,13 +957,6 @@ Escote estimado: $${currency.format(costPerPerson)} ARS por persona`;
               Compartir lista
             </button>
           </Panel>
-
-          <HistoryPanel
-            history={history}
-            adjustment={feedbackAdjustment}
-            onSave={saveSession}
-            onDelete={deleteSession}
-          />
         </section>
       </main>
 
@@ -997,7 +1040,7 @@ function ForecastPanel({
   );
 }
 
-function HistoryPanel({
+function HistoryContent({
   history,
   adjustment,
   onSave,
@@ -1009,7 +1052,7 @@ function HistoryPanel({
   onDelete: (sessionId: string) => void;
 }) {
   return (
-    <Panel title="Historial y ajuste" icon={<History className="h-5 w-5 text-orange-300" />}>
+    <>
       <div className={`rounded-lg border p-3 ${adjustment.tone}`}>
         <div className="text-sm font-black">{adjustment.title}</div>
         <p className="mt-1 text-xs leading-relaxed">{adjustment.message}</p>
@@ -1058,7 +1101,51 @@ function HistoryPanel({
           </div>
         ))}
       </div>
-    </Panel>
+    </>
+  );
+}
+
+function AccordionItem({
+  title,
+  icon,
+  open,
+  onToggle,
+  children,
+  badge,
+}: {
+  title: string;
+  icon: ReactNode;
+  open: boolean;
+  onToggle: () => void;
+  children: ReactNode;
+  badge?: string;
+}) {
+  return (
+    <div className="overflow-hidden rounded-lg border border-amber-900/50 bg-[#150d0b]">
+      <button
+        type="button"
+        onClick={onToggle}
+        className="flex w-full items-center justify-between gap-3 px-3 py-3 text-left transition hover:bg-amber-900/10"
+      >
+        <span className="flex min-w-0 items-center gap-2">
+          {icon}
+          <span className="truncate text-sm font-black uppercase tracking-wider text-amber-100">
+            {title}
+          </span>
+        </span>
+        <span className="flex shrink-0 items-center gap-2">
+          {badge && (
+            <span className="rounded-full border border-amber-800/60 px-2 py-0.5 text-xs font-black text-orange-300">
+              {badge}
+            </span>
+          )}
+          <ChevronDown
+            className={`h-4 w-4 text-stone-300 transition-transform ${open ? 'rotate-180' : ''}`}
+          />
+        </span>
+      </button>
+      {open && <div className="border-t border-amber-900/35 p-3">{children}</div>}
+    </div>
   );
 }
 
