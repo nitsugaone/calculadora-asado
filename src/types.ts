@@ -1,4 +1,11 @@
-export type CutType = 'sin_hueso' | 'con_hueso' | 'premium';
+export type CutType =
+  | 'sin_hueso'
+  | 'con_hueso'
+  | 'premium'
+  | 'cerdo'
+  | 'pollo'
+  | 'mixto_cerdo'
+  | 'mixto_pollo';
 
 export type ScenarioType = 'quincho' | 'chulengo' | 'afuera';
 
@@ -46,8 +53,19 @@ export interface AsadoResult {
   factorFuego: number;
   vacioQty: number;
   tiraQty: number;
+  cerdoQty: number;
+  polloQty: number;
   bolsasCarbon: number;
   bolsasLena: number;
+  gramsByProfile: {
+    hombres: number;
+    mujeres: number;
+    ninos: number;
+  };
+  meatBreakdown: Array<{
+    label: string;
+    amount: number;
+  }>;
 }
 
 export interface SplitCostConfig {

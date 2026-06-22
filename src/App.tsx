@@ -22,8 +22,10 @@ import {
   Wind,
 } from 'lucide-react';
 import {
+  CUT_TYPE_OPTIONS,
   calculateAsado,
   calculateExtras,
+  getCutTypeLabel,
   getFeedbackAdjustment,
   getThermodynamicAdvice,
   getWeatherAdvice,
@@ -176,17 +178,15 @@ export default function App() {
     results.bolsasCarbon * costs.carbonPricePerBag +
     costs.extraExpenses;
   const costPerPerson = Math.ceil(totalCostEstimate / Math.max(totalPeople, 1));
+  const meatBreakdownText = results.meatBreakdown
+    .map((item) => `${item.label}: ${item.amount} kg`)
+    .join(' · ');
 
   const checklistItems = useMemo<ChecklistItem[]>(
     () => [
       {
         id: 'c1',
-        label:
-          cutType === 'con_hueso'
-            ? 'Carne con hueso'
-            : cutType === 'sin_hueso'
-              ? 'Carne sin hueso'
-              : 'Premium mix',
+        label: getCutTypeLabel(cutType),
         amount: `${results.carneTotal} kg`,
         category: 'carnes',
         checked: false,
@@ -498,12 +498,14 @@ export default function App() {
       .join('\n');
     const text = `ASADO PRO - RÍO GALLEGOS
 Comensales: ${totalPeople} (${demographics.hombres}H / ${demographics.mujeres}M / ${demographics.ninos}N)
-Corte: ${cutType === 'premium' ? 'Premium mix' : cutType === 'con_hueso' ? 'Con hueso' : 'Sin hueso'}
+Corte: ${getCutTypeLabel(cutType)}
+Gramos base: ${results.gramsByProfile.hombres}g hombre / ${results.gramsByProfile.mujeres}g mujer / ${results.gramsByProfile.ninos}g niño
 Clima: ${temp}°C, viento ${wind} km/h
 ${forecastLine}
 Factor térmico: ${results.factorFuego}x
 
 Compra:
+- Desglose carne: ${meatBreakdownText}
 ${listText}
 
 Escote estimado: $${currency.format(costPerPerson)} ARS por persona`;
@@ -620,13 +622,14 @@ Escote estimado: $${currency.format(costPerPerson)} ARS por persona`;
           <Panel title="Corte y fuego" icon={<Flame className="h-5 w-5 text-red-400" />}>
             <Segmented
               value={cutType}
-              options={[
-                ['premium', 'Premium mix'],
-                ['con_hueso', 'Con hueso'],
-                ['sin_hueso', 'Sin hueso'],
-              ]}
+              options={CUT_TYPE_OPTIONS}
               onChange={(value) => setCutType(value as CutType)}
             />
+            <div className="mt-3 rounded-lg border border-amber-900/50 bg-[#150d0b] p-3 text-xs leading-relaxed text-stone-300">
+              <span className="font-black text-amber-100">Gramos base:</span>{' '}
+              {results.gramsByProfile.hombres}g hombre · {results.gramsByProfile.mujeres}g mujer ·{' '}
+              {results.gramsByProfile.ninos}g niño
+            </div>
 
             <div className="mt-4">
               <Segmented
@@ -732,7 +735,7 @@ Escote estimado: $${currency.format(costPerPerson)} ARS por persona`;
         <section className="flex flex-col gap-4">
           <Panel title="Resultado" icon={<Flame className="h-5 w-5 text-orange-400" />}>
             <div className="grid grid-cols-2 gap-3">
-              <Metric label="Carne" value={`${results.carneTotal} kg`} detail="principal" />
+              <Metric label="Carne" value={`${results.carneTotal} kg`} detail={getCutTypeLabel(cutType)} />
               <Metric label="Chorizos" value={`${results.choriTotal}`} detail="unidades" />
               <Metric
                 label="Carbón"
@@ -744,6 +747,20 @@ Escote estimado: $${currency.format(costPerPerson)} ARS por persona`;
                 value={`${results.lenaTotal} kg`}
                 detail={`${results.bolsasLena} atados`}
               />
+            </div>
+
+            <div className="mt-3 rounded-lg border border-amber-900/50 bg-[#150d0b] p-3">
+              <div className="text-xs font-bold uppercase tracking-wider text-stone-400">
+                Desglose carne
+              </div>
+              <div className="mt-2 grid gap-2 sm:grid-cols-2">
+                {results.meatBreakdown.map((item) => (
+                  <div key={item.label} className="flex items-center justify-between gap-3 text-sm">
+                    <span className="font-bold text-amber-100">{item.label}</span>
+                    <span className="font-mono font-black text-orange-300">{item.amount} kg</span>
+                  </div>
+                ))}
+              </div>
             </div>
 
             <div className="mt-4 rounded-lg border border-amber-900/50 bg-[#150d0b] p-3">

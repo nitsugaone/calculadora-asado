@@ -9,6 +9,97 @@ import {
   ScenarioType,
 } from './types';
 
+type MeatPart = 'vacio' | 'tira' | 'cerdo' | 'pollo';
+
+interface CutTypeConfig {
+  label: string;
+  shortLabel: string;
+  grams: {
+    hombres: number;
+    mujeres: number;
+    ninos: number;
+  };
+  mix: Array<{
+    part: MeatPart;
+    label: string;
+    share: number;
+  }>;
+}
+
+export const CUT_TYPE_OPTIONS: Array<[CutType, string]> = [
+  ['premium', 'Premium mix'],
+  ['con_hueso', 'Vacuno con hueso'],
+  ['sin_hueso', 'Vacuno sin hueso'],
+  ['cerdo', 'Cerdo'],
+  ['pollo', 'Pollo'],
+  ['mixto_cerdo', 'Vacuno + cerdo'],
+  ['mixto_pollo', 'Vacuno + pollo'],
+];
+
+const CUT_TYPE_CONFIG: Record<CutType, CutTypeConfig> = {
+  sin_hueso: {
+    label: 'Vacuno sin hueso',
+    shortLabel: 'Sin hueso',
+    grams: { hombres: 400, mujeres: 300, ninos: 185 },
+    mix: [{ part: 'vacio', label: 'Vacío / cortes sin hueso', share: 1 }],
+  },
+  con_hueso: {
+    label: 'Vacuno con hueso',
+    shortLabel: 'Con hueso',
+    grams: { hombres: 550, mujeres: 400, ninos: 250 },
+    mix: [{ part: 'tira', label: 'Tira / cortes con hueso', share: 1 }],
+  },
+  premium: {
+    label: 'Premium mix',
+    shortLabel: 'Premium mix',
+    grams: { hombres: 480, mujeres: 360, ninos: 220 },
+    mix: [
+      { part: 'vacio', label: 'Vacío', share: 0.5 },
+      { part: 'tira', label: 'Tira', share: 0.5 },
+    ],
+  },
+  cerdo: {
+    label: 'Cerdo',
+    shortLabel: 'Cerdo',
+    grams: { hombres: 450, mujeres: 330, ninos: 220 },
+    mix: [{ part: 'cerdo', label: 'Cerdo', share: 1 }],
+  },
+  pollo: {
+    label: 'Pollo',
+    shortLabel: 'Pollo',
+    grams: { hombres: 600, mujeres: 450, ninos: 300 },
+    mix: [{ part: 'pollo', label: 'Pollo con hueso', share: 1 }],
+  },
+  mixto_cerdo: {
+    label: 'Mixto vacuno/cerdo',
+    shortLabel: 'Vacuno + cerdo',
+    grams: { hombres: 500, mujeres: 370, ninos: 230 },
+    mix: [
+      { part: 'vacio', label: 'Vacuno sin hueso', share: 0.45 },
+      { part: 'tira', label: 'Vacuno con hueso', share: 0.25 },
+      { part: 'cerdo', label: 'Cerdo', share: 0.3 },
+    ],
+  },
+  mixto_pollo: {
+    label: 'Mixto vacuno/pollo',
+    shortLabel: 'Vacuno + pollo',
+    grams: { hombres: 550, mujeres: 400, ninos: 260 },
+    mix: [
+      { part: 'vacio', label: 'Vacuno sin hueso', share: 0.25 },
+      { part: 'tira', label: 'Vacuno con hueso', share: 0.35 },
+      { part: 'pollo', label: 'Pollo', share: 0.4 },
+    ],
+  },
+};
+
+export function getCutTypeLabel(cutType: CutType) {
+  return CUT_TYPE_CONFIG[cutType].label;
+}
+
+export function getCutTypeShortLabel(cutType: CutType) {
+  return CUT_TYPE_CONFIG[cutType].shortLabel;
+}
+
 /**
  * Calculates food, starters, and fuel for a Patagonian asado.
  * Wind speed and low temperatures increase fuel demand outside the quincho.
@@ -31,23 +122,28 @@ export function calculateAsado(
     ninos = advancedDist.ninos;
   }
 
-  const adultMaleBase = cutType === 'con_hueso' ? 550 : cutType === 'premium' ? 480 : 400;
-  const adultFemaleBase = cutType === 'con_hueso' ? 400 : cutType === 'premium' ? 360 : 300;
-  const childBase = cutType === 'con_hueso' ? 250 : cutType === 'premium' ? 220 : 185;
+  const config = CUT_TYPE_CONFIG[cutType];
+  const adultMaleBase = config.grams.hombres;
+  const adultFemaleBase = config.grams.mujeres;
+  const childBase = config.grams.ninos;
 
   const totalCarne =
     (hombres * adultMaleBase + mujeres * adultFemaleBase + ninos * childBase) / 1000;
 
-  let vacioQty = 0;
-  let tiraQty = 0;
-  if (cutType === 'premium') {
-    vacioQty = totalCarne * 0.5;
-    tiraQty = totalCarne * 0.5;
-  } else if (cutType === 'sin_hueso') {
-    vacioQty = totalCarne;
-  } else {
-    tiraQty = totalCarne;
-  }
+  const meatTotals: Record<MeatPart, number> = {
+    vacio: 0,
+    tira: 0,
+    cerdo: 0,
+    pollo: 0,
+  };
+  const meatBreakdown = config.mix.map((item) => {
+    const amount = Number((totalCarne * item.share).toFixed(1));
+    meatTotals[item.part] += amount;
+    return {
+      label: item.label,
+      amount,
+    };
+  });
 
   const choriTotal = Math.ceil(hombres * 1.0 + mujeres * 0.8 + ninos * 0.5);
   const morciTotal = Math.ceil((hombres + mujeres) * 0.4 + ninos * 0.1);
@@ -82,10 +178,18 @@ export function calculateAsado(
     carbonTotal,
     lenaTotal,
     factorFuego: Number(factorFuego.toFixed(2)),
-    vacioQty: Number(vacioQty.toFixed(1)),
-    tiraQty: Number(tiraQty.toFixed(1)),
+    vacioQty: Number(meatTotals.vacio.toFixed(1)),
+    tiraQty: Number(meatTotals.tira.toFixed(1)),
+    cerdoQty: Number(meatTotals.cerdo.toFixed(1)),
+    polloQty: Number(meatTotals.pollo.toFixed(1)),
     bolsasCarbon: Math.ceil(carbonTotal / 4),
     bolsasLena: Math.ceil(lenaTotal / 3),
+    gramsByProfile: {
+      hombres: adultMaleBase,
+      mujeres: adultFemaleBase,
+      ninos: childBase,
+    },
+    meatBreakdown,
   };
 }
 
