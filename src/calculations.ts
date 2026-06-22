@@ -281,7 +281,7 @@ export function getFeedbackAdjustment(history: SavedAsadoSession[]) {
     return {
       title: 'Tu historial pide un margen extra',
       message: 'En los ultimos asados falto comida. Suma 8-10% de carne o choris para este grupo.',
-      tone: 'text-amber-300 border-amber-500/30 bg-amber-500/10',
+      tone: 'text-white border-[#ea580c]/40 bg-[#ea580c]/10',
     };
   }
 
@@ -330,7 +330,7 @@ export function getWeatherAdvice(scenario: ScenarioType, temp: number, wind: num
     return {
       message:
         'Viento severo (>45 km/h). Ubicá el chulengo de espaldas al viento y protegé las cenizas.',
-      color: 'text-amber-400 border-amber-500/30 bg-amber-500/10',
+      color: 'text-white border-[#ea580c]/40 bg-[#ea580c]/10',
       isSafe: true,
     };
   }
@@ -347,7 +347,7 @@ export function getWeatherAdvice(scenario: ScenarioType, temp: number, wind: num
   if (wind >= 20) {
     return {
       message: 'Brisa patagónica activa. El consumo de carbón se acelera un poco.',
-      color: 'text-amber-300 border-amber-500/20 bg-amber-500/5',
+      color: 'text-white border-[#ea580c]/30 bg-[#ea580c]/10',
       isSafe: true,
     };
   }

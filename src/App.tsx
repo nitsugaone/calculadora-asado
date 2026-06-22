@@ -65,6 +65,11 @@ const emptyForecast: ForecastState = {
   error: null,
 };
 
+const parseWholeNumber = (value: string) => {
+  const parsed = parseInt(value, 10);
+  return Number.isFinite(parsed) ? parsed : 0;
+};
+
 type OpenMeteoForecast = {
   current?: {
     temperature_2m?: number;
@@ -186,6 +191,20 @@ export default function App() {
   const adviceStatus = getWeatherAdvice(scenario, temp, wind);
   const thermoTips = getThermodynamicAdvice(temp, wind);
   const feedbackAdjustment = getFeedbackAdjustment(history);
+  const isEmptyState = totalPeople <= 0;
+  const resultsAnimationKey = [
+    totalPeople,
+    cutType,
+    scenario,
+    temp,
+    wind,
+    results.carneTotal,
+    results.choriTotal,
+    results.carbonTotal,
+    results.lenaTotal,
+    extras.waterLiters,
+    extras.beerLiters,
+  ].join('|');
 
   const totalCostEstimate =
     results.carneTotal * costs.meatPricePerKg +
@@ -338,7 +357,7 @@ export default function App() {
   };
 
   const updatePeople = (value: number) => {
-    setTotalPeople(Math.max(1, value));
+    setTotalPeople(Math.max(0, value));
     triggerHaptic(8);
   };
 
@@ -546,8 +565,8 @@ Escote estimado: $${currency.format(costPerPerson)} ARS por persona`;
           options={CUT_TYPE_OPTIONS}
           onChange={(value) => setCutType(value as CutType)}
         />
-        <div className="mt-3 rounded-lg border border-amber-900/50 bg-[#150d0b] p-3 text-xs leading-relaxed text-stone-300">
-          <span className="font-black text-amber-100">Gramos base:</span>{' '}
+        <div className="mt-4 rounded-xl border border-white/10 bg-[#202020] p-4 text-xs leading-relaxed text-stone-300">
+          <span className="font-black text-stone-100">Gramos base:</span>{' '}
           {results.gramsByProfile.hombres}g hombre · {results.gramsByProfile.mujeres}g mujer ·{' '}
           {results.gramsByProfile.ninos}g niño
         </div>
@@ -571,7 +590,7 @@ Escote estimado: $${currency.format(costPerPerson)} ARS por persona`;
         open={openSettings.bebidas}
         onToggle={() => toggleSettingsSection('bebidas')}
       >
-        <div className="grid gap-2 sm:grid-cols-3">
+        <div className="grid gap-3 sm:grid-cols-3">
           <ToggleButton
             active={extrasConfig.includeAlcohol}
             label="Con alcohol"
@@ -604,11 +623,12 @@ Escote estimado: $${currency.format(costPerPerson)} ARS por persona`;
           />
         </div>
 
-        <div className="mt-4 grid grid-cols-2 gap-3 sm:grid-cols-4">
-          <Metric label="Agua" value={`${extras.waterLiters} l`} detail="base" compact />
-          <Metric label="Gaseosa" value={`${extras.sodaLiters} l`} detail="jugo/soda" compact />
-          <Metric label="Hielo" value={`${extras.iceKg} kg`} detail="conservadora" compact />
+        <div className="mt-4 grid gap-4 sm:grid-cols-2">
+          <Metric emoji="💧" label="Agua" value={`${extras.waterLiters} l`} detail="base" compact />
+          <Metric emoji="🥤" label="Gaseosa" value={`${extras.sodaLiters} l`} detail="jugo/soda" compact />
+          <Metric emoji="🧊" label="Hielo" value={`${extras.iceKg} kg`} detail="conservadora" compact />
           <Metric
+            emoji={extrasConfig.includeAlcohol ? '🍺' : '🚫'}
             label="Alcohol"
             value={extrasConfig.includeAlcohol ? `${extras.beerLiters} l` : '0 l'}
             detail={extrasConfig.includeAlcohol ? `${extras.wineBottles} vinos` : 'sin alcohol'}
@@ -624,30 +644,32 @@ Escote estimado: $${currency.format(costPerPerson)} ARS por persona`;
         onToggle={() => toggleSettingsSection('lista')}
         badge={`${checkedCount}/${allChecklist.length}`}
       >
-        <div className="mb-3 h-2 overflow-hidden rounded-full bg-[#100907]">
+        <div className="mb-4 h-2 overflow-hidden rounded-full bg-[#1a1a1a]">
           <div
-            className="h-full rounded-full bg-gradient-to-r from-orange-500 to-emerald-400"
+            className="h-full rounded-full bg-[#ea580c] transition-all duration-300 ease-in-out"
             style={{ width: `${progressPercent}%` }}
           />
         </div>
 
-        <div className="grid gap-2 sm:grid-cols-[1fr_0.75fr_0.7fr_auto]">
+        <div className="grid gap-3 sm:grid-cols-[1fr_0.75fr_0.7fr_auto]">
           <input
             value={customLabel}
             onChange={(event) => setCustomLabel(event.target.value)}
             placeholder="Agregar item"
-            className="min-h-10 rounded-lg border border-amber-900/70 bg-[#100907] px-3 text-sm font-semibold text-stone-100 outline-none focus:border-orange-500"
+            className="min-h-12 rounded-xl border border-white/10 bg-[#1a1a1a] px-4 text-sm font-semibold text-stone-100 outline-none transition focus:border-[#ea580c]"
           />
           <input
             value={customAmount}
             onChange={(event) => setCustomAmount(event.target.value)}
+            inputMode="numeric"
+            pattern="[0-9]*"
             placeholder="Cantidad"
-            className="min-h-10 rounded-lg border border-amber-900/70 bg-[#100907] px-3 text-sm font-semibold text-stone-100 outline-none focus:border-orange-500"
+            className="min-h-12 rounded-xl border border-white/10 bg-[#1a1a1a] px-4 text-sm font-semibold text-stone-100 outline-none transition focus:border-[#ea580c]"
           />
           <select
             value={customCategory}
             onChange={(event) => setCustomCategory(event.target.value as ChecklistCategory)}
-            className="min-h-10 rounded-lg border border-amber-900/70 bg-[#100907] px-3 text-sm font-semibold text-stone-100 outline-none focus:border-orange-500"
+            className="min-h-12 rounded-xl border border-white/10 bg-[#1a1a1a] px-4 text-sm font-semibold text-stone-100 outline-none transition focus:border-[#ea580c]"
           >
             <option value="carnes">Carnes</option>
             <option value="fuego">Fuego</option>
@@ -657,21 +679,21 @@ Escote estimado: $${currency.format(costPerPerson)} ARS por persona`;
           </select>
           <button
             onClick={addCustomItem}
-            className="grid min-h-10 place-items-center rounded-lg bg-orange-600 px-3 text-white transition hover:bg-orange-500"
+            className="grid min-h-12 place-items-center rounded-xl bg-[#ea580c] px-4 text-white shadow-[0_10px_22px_rgba(234,88,12,0.18)] transition duration-200 ease-in-out hover:bg-[#c2410c]"
             aria-label="Agregar item"
           >
             <Plus className="h-4 w-4" />
           </button>
         </div>
 
-        <div className="mt-3 max-h-96 space-y-2 overflow-y-auto pr-1">
+        <div className="mt-4 max-h-96 space-y-3 overflow-y-auto pr-1">
           {allChecklist.map((item) => (
             <div
               key={item.id}
-              className={`flex items-center justify-between gap-3 rounded-lg border p-3 transition ${
+              className={`flex items-center justify-between gap-3 rounded-xl border p-4 transition ${
                 item.checked
                   ? 'border-emerald-500/30 bg-emerald-500/10 text-stone-400'
-                  : 'border-amber-900/60 bg-[#150d0b] text-stone-100 hover:border-amber-700'
+                  : 'border-white/10 bg-[#202020] text-stone-100 hover:border-[#ea580c]/50'
               }`}
             >
               <button
@@ -680,7 +702,7 @@ Escote estimado: $${currency.format(costPerPerson)} ARS por persona`;
               >
                 <span
                   className={`grid h-5 w-5 shrink-0 place-items-center rounded border ${
-                    item.checked ? 'border-emerald-400 bg-emerald-500 text-white' : 'border-amber-800'
+                    item.checked ? 'border-emerald-400 bg-emerald-500 text-white' : 'border-white/20'
                   }`}
                 >
                   {item.checked && <Check className="h-3.5 w-3.5" />}
@@ -692,7 +714,7 @@ Escote estimado: $${currency.format(costPerPerson)} ARS por persona`;
                   </span>
                 </span>
               </button>
-              <span className="shrink-0 text-xs font-black text-orange-300">{item.amount}</span>
+              <span className="shrink-0 text-xs font-black text-[#ea580c]">{item.amount}</span>
               {item.custom && (
                 <button
                   onClick={() => removeCustomItem(item.id)}
@@ -709,7 +731,7 @@ Escote estimado: $${currency.format(costPerPerson)} ARS por persona`;
 
       <AccordionItem
         title="Historial y ajuste"
-        icon={<History className="h-4 w-4 text-orange-300" />}
+        icon={<History className="h-4 w-4 text-[#ea580c]" />}
         open={openSettings.historial}
         onToggle={() => toggleSettingsSection('historial')}
         badge={`${history.length}`}
@@ -725,12 +747,12 @@ Escote estimado: $${currency.format(costPerPerson)} ARS por persona`;
   );
 
   return (
-    <div className="min-h-screen bg-[#120d0b] text-stone-100">
-      <header className="sticky top-0 z-10 border-b border-amber-900/30 bg-[#120d0b]/95 backdrop-blur">
-        <div className="mx-auto flex max-w-6xl flex-col gap-3 px-4 py-4 sm:flex-row sm:items-center sm:justify-between">
+    <div className="min-h-screen bg-[#1a1a1a] text-stone-100">
+      <header className="sticky top-0 z-10 border-b border-white/10 bg-[#1a1a1a]/95 backdrop-blur">
+        <div className="mx-auto flex max-w-[900px] flex-col gap-3 px-4 py-4 sm:flex-row sm:items-center sm:justify-between">
           <div>
-            <h1 className="text-2xl font-black tracking-tight text-amber-300">Asado Pro</h1>
-            <p className="text-xs font-semibold uppercase tracking-wider text-orange-300/80">
+            <h1 className="text-2xl font-black tracking-tight text-stone-50">Asado Pro</h1>
+            <p className="text-xs font-semibold uppercase tracking-wider text-stone-400">
               Río Gallegos · compras, clima, escote e historial
             </p>
           </div>
@@ -740,7 +762,7 @@ Escote estimado: $${currency.format(costPerPerson)} ARS por persona`;
               className={`inline-flex items-center gap-1.5 rounded-full border px-3 py-1 text-xs font-bold ${
                 onlineStatus
                   ? 'border-emerald-500/30 bg-emerald-500/10 text-emerald-300'
-                  : 'border-amber-500/30 bg-amber-500/10 text-amber-300'
+                  : 'border-white/10 bg-white/5 text-stone-300'
               }`}
             >
               {onlineStatus ? <Wifi className="h-3.5 w-3.5" /> : <WifiOff className="h-3.5 w-3.5" />}
@@ -751,7 +773,7 @@ Escote estimado: $${currency.format(costPerPerson)} ARS por persona`;
               <button
                 onClick={fetchForecast}
                 disabled={weather.loading || forecast.loading}
-                className="inline-flex items-center gap-1.5 rounded-full border border-sky-500/30 bg-sky-500/10 px-3 py-1 text-xs font-bold text-sky-300 transition hover:bg-sky-500/20 disabled:opacity-60"
+                className="inline-flex min-h-8 items-center gap-1.5 rounded-full border border-white/10 bg-white/5 px-3 py-1 text-xs font-bold text-stone-200 transition hover:border-[#ea580c]/60 hover:text-white disabled:opacity-60"
               >
                 <RefreshCw
                   className={`h-3.5 w-3.5 ${weather.loading || forecast.loading ? 'animate-spin' : ''}`}
@@ -763,7 +785,7 @@ Escote estimado: $${currency.format(costPerPerson)} ARS por persona`;
             <button
               type="button"
               onClick={() => setIsSettingsOpen(true)}
-              className="grid h-8 w-8 place-items-center rounded-full border border-amber-500/30 bg-amber-500/10 text-amber-200 transition hover:bg-amber-500/20"
+              className="grid h-8 w-8 place-items-center rounded-full border border-white/10 bg-white/5 text-[#ea580c] transition hover:border-[#ea580c]/60 hover:bg-white/10"
               aria-label="Abrir configuración"
               title="Configuración"
             >
@@ -773,7 +795,7 @@ Escote estimado: $${currency.format(costPerPerson)} ARS por persona`;
             {deferredPrompt && (
               <button
                 onClick={triggerInstall}
-                className="inline-flex items-center gap-1.5 rounded-full border border-orange-500/30 bg-orange-500/15 px-3 py-1 text-xs font-bold text-orange-200 transition hover:bg-orange-500/25"
+                className="inline-flex min-h-8 items-center gap-1.5 rounded-full border border-[#ea580c]/40 bg-[#ea580c] px-3 py-1 text-xs font-bold text-white shadow-[0_8px_18px_rgba(234,88,12,0.18)] transition duration-200 ease-in-out hover:bg-[#c2410c]"
               >
                 <Download className="h-3.5 w-3.5" />
                 Instalar
@@ -789,20 +811,20 @@ Escote estimado: $${currency.format(costPerPerson)} ARS por persona`;
           onClick={() => setIsSettingsOpen(false)}
         >
           <div
-            className="mx-auto max-h-[calc(100vh-2rem)] max-w-2xl overflow-y-auto rounded-lg border border-amber-900/45 bg-[#1a110f] p-4 shadow-2xl"
+            className="mx-auto max-h-[calc(100vh-2rem)] max-w-2xl overflow-y-auto rounded-xl border border-white/10 bg-[#242424] p-6 shadow-2xl"
             onClick={(event) => event.stopPropagation()}
           >
-            <div className="mb-4 flex items-center justify-between gap-3 border-b border-amber-900/25 pb-3">
+            <div className="mb-4 flex items-center justify-between gap-3 border-b border-white/10 pb-3">
               <div className="flex min-w-0 items-center gap-2">
-                <Settings className="h-5 w-5 shrink-0 text-amber-300" />
-                <h2 className="truncate text-sm font-black uppercase tracking-wider text-amber-100">
+                <Settings className="h-5 w-5 shrink-0 text-[#ea580c]" />
+                <h2 className="truncate text-sm font-black uppercase tracking-wider text-stone-100">
                   Configuración
                 </h2>
               </div>
               <button
                 type="button"
                 onClick={() => setIsSettingsOpen(false)}
-                className="grid h-9 w-9 shrink-0 place-items-center rounded-lg border border-amber-900/70 bg-[#100907] text-amber-200 transition hover:bg-amber-900/20"
+                className="grid h-12 w-12 shrink-0 place-items-center rounded-xl border border-white/10 bg-[#1a1a1a] text-stone-200 transition hover:border-[#ea580c]/60 hover:text-white"
                 aria-label="Cerrar configuración"
               >
                 <X className="h-4 w-4" />
@@ -814,15 +836,23 @@ Escote estimado: $${currency.format(costPerPerson)} ARS por persona`;
         </div>
       )}
 
-      <main className="mx-auto grid max-w-6xl gap-4 px-4 py-5 xl:grid-cols-[1fr_1fr]">
+      <main className="safe-area-form mx-auto grid max-w-[900px] gap-4 px-4 py-5 md:grid-cols-[minmax(0,1fr)_minmax(0,1fr)] md:items-start">
         <section className="flex flex-col gap-4">
-          <Panel title="Comensales" icon={<Users className="h-5 w-5 text-orange-400" />}>
-            <div className="flex items-center justify-between gap-3">
+          <Panel title="Comensales" icon={<Users className="h-5 w-5 text-[#ea580c]" />}>
+            <div className="flex items-center justify-between gap-4">
               <IconButton label="Restar persona" onClick={() => updatePeople(totalPeople - 1)}>
                 <Minus className="h-4 w-4" />
               </IconButton>
               <div className="text-center">
-                <div className="text-5xl font-black text-white">{totalPeople}</div>
+                <input
+                  aria-label="Cantidad de personas"
+                  inputMode="numeric"
+                  pattern="[0-9]*"
+                  value={totalPeople || ''}
+                  onInput={(event) => updatePeople(parseWholeNumber(event.currentTarget.value))}
+                  placeholder="0"
+                  className="h-16 w-32 rounded-xl border border-white/10 bg-[#202020] text-center text-[2.5rem] font-black leading-none text-white outline-none transition focus:border-[#ea580c]"
+                />
                 <div className="text-xs font-bold uppercase tracking-wider text-stone-400">personas</div>
               </div>
               <IconButton label="Sumar persona" onClick={() => updatePeople(totalPeople + 1)}>
@@ -832,16 +862,16 @@ Escote estimado: $${currency.format(costPerPerson)} ARS por persona`;
 
             <input
               type="range"
-              min="1"
+              min="0"
               max="80"
               value={totalPeople}
-              onChange={(event) => updatePeople(parseInt(event.target.value, 10))}
-              className="mt-4 w-full accent-orange-500"
+              onInput={(event) => updatePeople(parseInt(event.currentTarget.value, 10))}
+              className="mt-4 h-12 w-full accent-[#ea580c]"
             />
 
             <button
               onClick={() => setShowAdvancedDemo((value) => !value)}
-              className="mt-3 w-full rounded-lg border border-amber-900/70 bg-[#160f0d] px-3 py-2 text-sm font-bold text-amber-200"
+              className="mt-4 min-h-12 w-full rounded-xl border border-white/10 bg-[#202020] px-4 py-3 text-sm font-bold text-stone-100 transition duration-200 ease-in-out hover:border-[#ea580c]/60"
             >
               {showAdvancedDemo ? 'Usar reparto automático' : 'Editar hombres, mujeres y niños'}
             </button>
@@ -869,7 +899,7 @@ Escote estimado: $${currency.format(costPerPerson)} ARS por persona`;
 
           {scenario !== 'quincho' && (
             <>
-              <Panel title="Clima local" icon={<Wind className="h-5 w-5 text-sky-300" />}>
+              <Panel title="Clima local" icon={<Wind className="h-5 w-5 text-[#ea580c]" />}>
                 <Slider
                   label="Temperatura"
                   value={temp}
@@ -886,7 +916,7 @@ Escote estimado: $${currency.format(costPerPerson)} ARS por persona`;
                   max={110}
                   unit="km/h"
                   onChange={setWind}
-                  icon={<Wind className="h-4 w-4 text-orange-300" />}
+                  icon={<Wind className="h-4 w-4 text-[#ea580c]" />}
                 />
 
                 <div className={`mt-3 rounded-lg border p-3 text-sm font-bold ${adviceStatus.color}`}>
@@ -912,51 +942,80 @@ Escote estimado: $${currency.format(costPerPerson)} ARS por persona`;
           )}
         </section>
 
-        <section className="flex flex-col gap-4">
-          <Panel title="Resultado" icon={<Flame className="h-5 w-5 text-orange-400" />}>
-            <div className="grid grid-cols-2 gap-3">
-              <Metric label="Carne" value={`${results.carneTotal} kg`} detail={getCutTypeLabel(cutType)} />
-              <Metric label="Chorizos" value={`${results.choriTotal}`} detail="unidades" />
-              <Metric
-                label="Carbón"
-                value={`${results.carbonTotal} kg`}
-                detail={`${results.bolsasCarbon} bolsas`}
-              />
-              <Metric
-                label="Leña"
-                value={`${results.lenaTotal} kg`}
-                detail={`${results.bolsasLena} atados`}
-              />
-            </div>
-
-            <div className="mt-3 rounded-lg border border-amber-900/50 bg-[#150d0b] p-3">
-              <div className="text-xs font-bold uppercase tracking-wider text-stone-400">
-                Desglose carne
+        <section className="flex flex-col gap-4 md:sticky md:top-24 md:self-start">
+          <Panel title="Resultado" icon={<Flame className="h-5 w-5 text-[#ea580c]" />}>
+            {isEmptyState ? (
+              <div className="rounded-xl border border-dashed border-white/15 bg-[#202020] p-6 text-center text-sm font-bold leading-relaxed text-stone-300">
+                Ingresá la cantidad de personas para ver las cantidades 🔥
               </div>
-              <div className="mt-2 grid gap-2 sm:grid-cols-2">
-                {results.meatBreakdown.map((item) => (
-                  <div key={item.label} className="flex items-center justify-between gap-3 text-sm">
-                    <span className="font-bold text-amber-100">{item.label}</span>
-                    <span className="font-mono font-black text-orange-300">{item.amount} kg</span>
+            ) : (
+              <div key={resultsAnimationKey} className="result-animate">
+                <div className="grid gap-4 sm:grid-cols-2">
+                  <Metric
+                    emoji="🥩"
+                    label="Carne"
+                    value={`${results.carneTotal} kg`}
+                    detail={getCutTypeLabel(cutType)}
+                    featured
+                  />
+                  <Metric
+                    emoji="🌭"
+                    label="Chorizos"
+                    value={`${results.choriTotal}`}
+                    detail="unidades"
+                    featured
+                  />
+                  <Metric
+                    emoji="🔥"
+                    label="Carbón"
+                    value={`${results.carbonTotal} kg`}
+                    detail={`${results.bolsasCarbon} bolsas`}
+                    featured
+                  />
+                  <Metric
+                    emoji="🪵"
+                    label="Leña"
+                    value={`${results.lenaTotal} kg`}
+                    detail={`${results.bolsasLena} atados`}
+                    featured
+                  />
+                </div>
+
+                <div className="mt-4 rounded-xl border border-white/10 bg-[#202020] p-6">
+                  <div className="text-xs font-bold uppercase tracking-wider text-stone-400">
+                    Desglose carne
                   </div>
-                ))}
-              </div>
-            </div>
+                  <div className="mt-4 grid gap-4 sm:grid-cols-2">
+                    {results.meatBreakdown.map((item) => (
+                      <div key={item.label}>
+                        <Metric
+                          emoji={meatEmoji(item.label)}
+                          label={item.label}
+                          value={`${item.amount} kg`}
+                          detail="cantidad sugerida"
+                          compact
+                        />
+                      </div>
+                    ))}
+                  </div>
+                </div>
 
-            <div className="mt-4 rounded-lg border border-amber-900/50 bg-[#150d0b] p-3">
-              <div className="flex items-center justify-between">
-                <span className="text-xs font-bold uppercase tracking-wider text-stone-400">
-                  Factor térmico
-                </span>
-                <span className="font-mono text-lg font-black text-orange-300">
-                  {results.factorFuego}x
-                </span>
+                <div className="mt-4 rounded-xl border border-white/10 bg-[#202020] p-6">
+                  <div className="flex items-center justify-between gap-4">
+                    <span className="text-xs font-bold uppercase tracking-wider text-stone-400">
+                      Factor térmico
+                    </span>
+                    <span className="font-mono text-[2.5rem] font-black leading-none text-[#ea580c]">
+                      {results.factorFuego}x
+                    </span>
+                  </div>
+                  <p className="mt-3 text-sm leading-relaxed text-stone-300">{thermoTips.climateSummary}</p>
+                </div>
               </div>
-              <p className="mt-2 text-xs leading-relaxed text-stone-300">{thermoTips.climateSummary}</p>
-            </div>
+            )}
           </Panel>
 
-          <Panel title="Escote" icon={<DollarSign className="h-5 w-5 text-emerald-300" />}>
+          <Panel title="Escote" icon={<DollarSign className="h-5 w-5 text-[#ea580c]" />}>
             <Slider
               label="Precio carne"
               value={costs.meatPricePerKg}
@@ -976,28 +1035,33 @@ Escote estimado: $${currency.format(costPerPerson)} ARS por persona`;
               onChange={(value) => setCosts((current) => ({ ...current, extraExpenses: value }))}
             />
 
-            <div className="mt-4 rounded-lg border border-emerald-500/30 bg-emerald-500/10 p-4">
-              <div className="flex items-end justify-between gap-3">
-                <div>
-                  <div className="text-xs font-bold uppercase tracking-wider text-emerald-300">
-                    Total estimado
-                  </div>
-                  <div className="text-xl font-black">${currency.format(totalCostEstimate)} ARS</div>
-                </div>
-                <div className="text-right">
-                  <div className="text-xs font-bold uppercase tracking-wider text-orange-300">
-                    Por cabeza
-                  </div>
-                  <div className="text-2xl font-black text-orange-300">
-                    ${currency.format(costPerPerson)}
-                  </div>
-                </div>
+            {isEmptyState ? (
+              <div className="mt-4 rounded-xl border border-dashed border-white/15 bg-[#202020] p-6 text-sm font-bold text-stone-300">
+                Definí los comensales para estimar el escote.
               </div>
-            </div>
+            ) : (
+              <div key={`cost-${resultsAnimationKey}`} className="result-animate mt-4 grid gap-4 sm:grid-cols-2">
+                <Metric
+                  emoji="💵"
+                  label="Total estimado"
+                  value={`$${currency.format(totalCostEstimate)}`}
+                  detail="ARS"
+                  featured
+                />
+                <Metric
+                  emoji="👤"
+                  label="Por cabeza"
+                  value={`$${currency.format(costPerPerson)}`}
+                  detail="ARS por persona"
+                  featured
+                />
+              </div>
+            )}
 
             <button
               onClick={shareDetails}
-              className="mt-3 inline-flex w-full items-center justify-center gap-2 rounded-lg bg-orange-600 px-4 py-3 text-sm font-black text-white transition hover:bg-orange-500"
+              disabled={isEmptyState}
+              className="mt-4 inline-flex min-h-12 w-full items-center justify-center gap-2 rounded-xl bg-[#ea580c] px-4 py-3 text-sm font-black text-white shadow-[0_10px_22px_rgba(234,88,12,0.22)] transition duration-200 ease-in-out hover:bg-[#c2410c] disabled:cursor-not-allowed disabled:bg-stone-700 disabled:shadow-none"
             >
               <Share2 className="h-4 w-4" />
               Compartir lista
@@ -1054,10 +1118,10 @@ function ForecastPanel({
 
       <div className="mt-3 grid gap-2 sm:grid-cols-2">
         {forecast.slots.map((slot) => (
-          <div key={slot.time} className="rounded-lg border border-amber-900/50 bg-[#150d0b] p-3">
+          <div key={slot.time} className="rounded-xl border border-white/10 bg-[#202020] p-4">
             <div className="flex items-center justify-between gap-2">
-              <span className="flex items-center gap-1.5 text-sm font-black text-amber-100">
-                <Clock className="h-3.5 w-3.5 text-orange-300" />
+              <span className="flex items-center gap-1.5 text-sm font-black text-stone-100">
+                <Clock className="h-3.5 w-3.5 text-[#ea580c]" />
                 {slot.label}
               </span>
               <span className={`rounded-full px-2 py-0.5 text-[11px] font-black ${slotBadge(slot.status)}`}>
@@ -1112,7 +1176,7 @@ function HistoryContent({
 
       <div className="mt-3 space-y-2">
         {history.length === 0 && (
-          <div className="rounded-lg border border-amber-900/50 bg-[#150d0b] p-3 text-sm text-stone-400">
+          <div className="rounded-xl border border-white/10 bg-[#202020] p-4 text-sm text-stone-400">
             Guardá el resultado real de cada asado para calibrar futuras compras.
           </div>
         )}
@@ -1120,10 +1184,10 @@ function HistoryContent({
         {history.map((session) => (
           <div
             key={session.id}
-            className="flex items-center justify-between gap-3 rounded-lg border border-amber-900/50 bg-[#150d0b] p-3"
+            className="flex items-center justify-between gap-3 rounded-xl border border-white/10 bg-[#202020] p-4"
           >
             <div className="min-w-0">
-              <div className="truncate text-sm font-black text-amber-100">
+              <div className="truncate text-sm font-black text-stone-100">
                 {new Intl.DateTimeFormat('es-AR', {
                   day: '2-digit',
                   month: 'short',
@@ -1167,21 +1231,21 @@ function AccordionItem({
   badge?: string;
 }) {
   return (
-    <div className="overflow-hidden rounded-lg border border-amber-900/50 bg-[#150d0b]">
+    <div className="overflow-hidden rounded-xl border border-white/10 bg-[#202020]">
       <button
         type="button"
         onClick={onToggle}
-        className="flex w-full items-center justify-between gap-3 px-3 py-3 text-left transition hover:bg-amber-900/10"
+        className="flex min-h-12 w-full items-center justify-between gap-3 px-4 py-3 text-left transition duration-200 ease-in-out hover:bg-white/5"
       >
         <span className="flex min-w-0 items-center gap-2">
           {icon}
-          <span className="truncate text-sm font-black uppercase tracking-wider text-amber-100">
+          <span className="truncate text-sm font-black uppercase tracking-wider text-stone-100">
             {title}
           </span>
         </span>
         <span className="flex shrink-0 items-center gap-2">
           {badge && (
-            <span className="rounded-full border border-amber-800/60 px-2 py-0.5 text-xs font-black text-orange-300">
+            <span className="rounded-full border border-[#ea580c]/40 px-2 py-0.5 text-xs font-black text-[#ea580c]">
               {badge}
             </span>
           )}
@@ -1190,7 +1254,7 @@ function AccordionItem({
           />
         </span>
       </button>
-      {open && <div className="border-t border-amber-900/35 p-3">{children}</div>}
+      {open && <div className="border-t border-white/10 p-4">{children}</div>}
     </div>
   );
 }
@@ -1205,10 +1269,10 @@ function Panel({
   children: ReactNode;
 }) {
   return (
-    <section className="rounded-lg border border-amber-900/35 bg-[#1a110f] p-4 shadow-xl">
-      <div className="mb-4 flex items-center gap-2 border-b border-amber-900/25 pb-3">
+    <section className="rounded-xl border border-white/10 bg-[#242424] p-6 shadow-[0_18px_45px_rgba(0,0,0,0.22)]">
+      <div className="mb-4 flex items-center gap-2 border-b border-white/10 pb-3">
         {icon}
-        <h2 className="text-sm font-black uppercase tracking-wider text-amber-100">{title}</h2>
+        <h2 className="text-sm font-black uppercase tracking-wider text-stone-100">{title}</h2>
       </div>
       {children}
     </section>
@@ -1227,7 +1291,7 @@ function IconButton({
   return (
     <button
       onClick={onClick}
-      className="grid h-10 w-10 place-items-center rounded-lg border border-amber-900 bg-[#1c120f] text-amber-200"
+      className="grid h-12 w-12 place-items-center rounded-xl border border-white/10 bg-[#202020] text-[#ea580c] transition duration-200 ease-in-out hover:border-[#ea580c]/60 hover:bg-white/5"
       aria-label={label}
     >
       {children}
@@ -1245,13 +1309,13 @@ function Counter({
   onChange: (value: number) => void;
 }) {
   return (
-    <div className="rounded-lg border border-amber-900/50 bg-[#150d0b] p-3">
+    <div className="rounded-xl border border-white/10 bg-[#202020] p-4">
       <div className="mb-2 text-xs font-bold uppercase tracking-wider text-stone-400">{label}</div>
       <div className="flex items-center justify-between gap-2">
         <IconButton label={`Restar ${label}`} onClick={() => onChange(value - 1)}>
           <Minus className="h-3.5 w-3.5" />
         </IconButton>
-        <span className="text-xl font-black">{value}</span>
+        <span className="text-2xl font-black text-stone-50">{value}</span>
         <IconButton label={`Sumar ${label}`} onClick={() => onChange(value + 1)}>
           <Plus className="h-3.5 w-3.5" />
         </IconButton>
@@ -1270,15 +1334,15 @@ function Segmented({
   onChange: (value: string) => void;
 }) {
   return (
-    <div className="grid gap-2 sm:grid-cols-3">
+    <div className="grid gap-3 sm:grid-cols-3">
       {options.map(([key, label]) => (
         <button
           key={key}
           onClick={() => onChange(key)}
-          className={`rounded-lg border px-3 py-3 text-sm font-black transition ${
+          className={`min-h-12 rounded-xl border px-4 py-3 text-sm font-black transition duration-200 ease-in-out ${
             value === key
-              ? 'border-orange-500 bg-orange-500/15 text-orange-200'
-              : 'border-amber-900/70 bg-[#150d0b] text-stone-400 hover:border-amber-700'
+              ? 'border-[#ea580c] bg-[#ea580c]/10 text-white'
+              : 'border-white/10 bg-[#202020] text-stone-400 hover:border-[#ea580c]/50 hover:text-stone-100'
           }`}
         >
           {label}
@@ -1300,10 +1364,10 @@ function ToggleButton({
   return (
     <button
       onClick={onClick}
-      className={`rounded-lg border px-3 py-3 text-sm font-black transition ${
+      className={`min-h-12 rounded-xl border px-4 py-3 text-sm font-black transition duration-200 ease-in-out ${
         active
-          ? 'border-emerald-500 bg-emerald-500/15 text-emerald-200'
-          : 'border-amber-900/70 bg-[#150d0b] text-stone-400 hover:border-amber-700'
+          ? 'border-[#ea580c] bg-[#ea580c]/10 text-white'
+          : 'border-white/10 bg-[#202020] text-stone-400 hover:border-[#ea580c]/50 hover:text-stone-100'
       }`}
     >
       {label}
@@ -1323,13 +1387,13 @@ function FeedbackButton({
   const tones = {
     emerald: 'border-emerald-500/30 bg-emerald-500/10 text-emerald-200',
     sky: 'border-sky-500/30 bg-sky-500/10 text-sky-200',
-    amber: 'border-amber-500/30 bg-amber-500/10 text-amber-200',
+    amber: 'border-[#ea580c]/40 bg-[#ea580c]/10 text-white',
   };
 
   return (
     <button
       onClick={onClick}
-      className={`inline-flex items-center justify-center gap-1.5 rounded-lg border px-3 py-3 text-sm font-black ${tones[tone]}`}
+      className={`inline-flex min-h-12 items-center justify-center gap-1.5 rounded-xl border px-4 py-3 text-sm font-black ${tones[tone]}`}
     >
       <Save className="h-3.5 w-3.5" />
       {label}
@@ -1357,13 +1421,13 @@ function Slider({
   onChange: (value: number) => void;
 }) {
   return (
-    <label className="mt-3 block">
-      <span className="mb-1 flex items-center justify-between gap-2">
+    <label className="mt-4 block">
+      <span className="mb-2 flex items-center justify-between gap-2">
         <span className="flex items-center gap-1.5 text-xs font-bold uppercase tracking-wider text-stone-400">
           {icon}
           {label}
         </span>
-        <span className="font-mono text-sm font-black text-orange-300">
+        <span className="font-mono text-sm font-black text-[#ea580c]">
           {currency.format(value)} {unit}
         </span>
       </span>
@@ -1373,31 +1437,42 @@ function Slider({
         max={max}
         step={step}
         value={value}
-        onChange={(event) => onChange(parseInt(event.target.value, 10))}
-        className="w-full accent-orange-500"
+        onInput={(event) => onChange(parseInt(event.currentTarget.value, 10))}
+        className="h-12 w-full accent-[#ea580c]"
       />
     </label>
   );
 }
 
 function Metric({
+  emoji,
   label,
   value,
   detail,
   compact = false,
+  featured = false,
 }: {
+  emoji?: string;
   label: string;
   value: string;
   detail: string;
   compact?: boolean;
+  featured?: boolean;
 }) {
   return (
-    <div className="rounded-lg border border-amber-900/50 bg-[#150d0b] p-4">
-      <div className="text-xs font-bold uppercase tracking-wider text-stone-400">{label}</div>
-      <div className={`mt-1 font-black text-orange-300 ${compact ? 'text-xl' : 'text-2xl'}`}>
+    <div className="rounded-xl border border-white/10 bg-[#202020] p-6 shadow-[0_12px_30px_rgba(0,0,0,0.16)]">
+      <div className="flex items-start justify-between gap-3">
+        <div className="min-w-0 text-xs font-bold uppercase tracking-wider text-stone-400">{label}</div>
+        {emoji && <div className="shrink-0 text-2xl leading-none">{emoji}</div>}
+      </div>
+      <div
+        className={`mt-3 font-black leading-none tracking-normal text-[#ea580c] ${
+          featured ? 'text-[2.5rem]' : compact ? 'text-3xl' : 'text-4xl'
+        }`}
+      >
         {value}
       </div>
-      <div className="mt-1 text-xs text-stone-500">{detail}</div>
+      <div className="mt-2 text-xs font-semibold leading-snug text-stone-400">{detail}</div>
     </div>
   );
 }
@@ -1424,6 +1499,14 @@ function categoryLabel(category: ChecklistCategory) {
   return labels[category];
 }
 
+function meatEmoji(label: string) {
+  const normalized = label.toLowerCase();
+  if (normalized.includes('pollo')) return '🍗';
+  if (normalized.includes('cerdo')) return '🥓';
+  if (normalized.includes('tira') || normalized.includes('hueso')) return '🍖';
+  return '🥩';
+}
+
 function feedbackLabel(feedback: AsadoFeedback) {
   const labels: Record<AsadoFeedback, string> = {
     perfecto: 'perfecto',
@@ -1436,7 +1519,7 @@ function feedbackLabel(feedback: AsadoFeedback) {
 function forecastTone(status: 'ideal' | 'usable' | 'riesgoso') {
   const tones = {
     ideal: 'text-emerald-200 border-emerald-500/30 bg-emerald-500/10',
-    usable: 'text-amber-200 border-amber-500/30 bg-amber-500/10',
+    usable: 'text-white border-[#ea580c]/40 bg-[#ea580c]/10',
     riesgoso: 'text-rose-200 border-rose-500/30 bg-rose-500/10',
   };
   return tones[status];
@@ -1445,7 +1528,7 @@ function forecastTone(status: 'ideal' | 'usable' | 'riesgoso') {
 function slotBadge(status: 'ideal' | 'usable' | 'riesgoso') {
   const tones = {
     ideal: 'bg-emerald-500/15 text-emerald-200',
-    usable: 'bg-amber-500/15 text-amber-200',
+    usable: 'bg-[#ea580c]/15 text-white',
     riesgoso: 'bg-rose-500/15 text-rose-200',
   };
   return tones[status];
