@@ -92,6 +92,7 @@ type OpenMeteoForecast = {
 
 export default function App() {
   const [totalPeople, setTotalPeople] = useState(12);
+  const [nonPayingPeople, setNonPayingPeople] = useState(0);
   const [demographics, setDemographics] = useState<ParticipantConfig>({
     hombres: 5,
     mujeres: 5,
@@ -155,6 +156,10 @@ export default function App() {
   }, [showAdvancedDemo, totalPeople]);
 
   useEffect(() => {
+    setNonPayingPeople((current) => Math.min(current, totalPeople));
+  }, [totalPeople]);
+
+  useEffect(() => {
     const handleOnline = () => setOnlineStatus(true);
     const handleOffline = () => setOnlineStatus(false);
     const handleInstallPrompt = (event: any) => {
@@ -207,16 +212,22 @@ export default function App() {
     results.lenaTotal,
     extras.waterLiters,
     extras.beerLiters,
+    nonPayingPeople,
   ].join('|');
 
   const totalCostEstimate =
     results.carneTotal * costs.meatPricePerKg +
     results.bolsasCarbon * costs.carbonPricePerBag +
     costs.extraExpenses;
-  const costPerPerson = Math.ceil(totalCostEstimate / Math.max(totalPeople, 1));
+  const payingPeople = Math.max(totalPeople - nonPayingPeople, 0);
+  const costPerPerson = payingPeople > 0 ? Math.ceil(totalCostEstimate / payingPeople) : 0;
   const meatBreakdownText = results.meatBreakdown
     .map((item) => `${item.label}: ${item.amount} kg`)
     .join(' · ');
+  const shareBudgetLine =
+    payingPeople > 0
+      ? `Presupuesto estimado: $${currency.format(totalCostEstimate)} ARS total / $${currency.format(costPerPerson)} ARS por persona que paga`
+      : `Presupuesto estimado: $${currency.format(totalCostEstimate)} ARS total / sin personas que paguen`;
 
   const checklistItems = useMemo<ChecklistItem[]>(
     () => [
@@ -361,6 +372,11 @@ export default function App() {
 
   const updatePeople = (value: number) => {
     setTotalPeople(Math.max(0, value));
+    triggerHaptic(8);
+  };
+
+  const updateNonPayingPeople = (value: number) => {
+    setNonPayingPeople(Math.min(Math.max(0, value), totalPeople));
     triggerHaptic(8);
   };
 
@@ -534,6 +550,8 @@ export default function App() {
       .join('\n');
     const text = `ASADO PRO - RÍO GALLEGOS
 Comensales: ${totalPeople} (${demographics.hombres}H / ${demographics.mujeres}M / ${demographics.ninos}N)
+Invitados sin pago: ${nonPayingPeople}
+Personas que pagan: ${payingPeople}
 Corte: ${getCutTypeLabel(cutType)}
 Gramos base: ${results.gramsByProfile.hombres}g hombre / ${results.gramsByProfile.mujeres}g mujer / ${results.gramsByProfile.ninos}g niño
 Clima: ${temp}°C, viento ${wind} km/h
@@ -551,7 +569,7 @@ Resumen:
 Lista de compras:
 ${listText}
 
-Presupuesto estimado: $${currency.format(totalCostEstimate)} ARS total / $${currency.format(costPerPerson)} ARS por persona`;
+${shareBudgetLine}`;
 
     if (navigator.share) {
       await navigator.share({ title: 'Asado Pro Río Gallegos', text }).catch(() => undefined);
@@ -760,6 +778,116 @@ Presupuesto estimado: $${currency.format(totalCostEstimate)} ARS total / $${curr
     </div>
   );
 
+  const budgetPanel = (
+    <Panel title="Presupuesto" icon={<DollarSign className="h-5 w-5 text-[#ea580c]" />}>
+      <CostInput
+        label="Precio carne"
+        value={costs.meatPricePerKg}
+        unit="ARS/kg"
+        onChange={(value) => setCosts((current) => ({ ...current, meatPricePerKg: value }))}
+      />
+      <PresetButtons
+        label="Carne"
+        values={MEAT_PRICE_PRESETS}
+        onSelect={(value) => setCosts((current) => ({ ...current, meatPricePerKg: value }))}
+      />
+      <CostInput
+        label="Bolsa de carbón"
+        value={costs.carbonPricePerBag}
+        unit="ARS"
+        onChange={(value) => setCosts((current) => ({ ...current, carbonPricePerBag: value }))}
+      />
+      <PresetButtons
+        label="Carbón"
+        values={COAL_PRICE_PRESETS}
+        onSelect={(value) => setCosts((current) => ({ ...current, carbonPricePerBag: value }))}
+      />
+      <CostInput
+        label="Extras"
+        value={costs.extraExpenses}
+        unit="ARS"
+        onChange={(value) => setCosts((current) => ({ ...current, extraExpenses: value }))}
+      />
+      <PresetButtons
+        label="Extras"
+        values={EXTRA_PRICE_PRESETS}
+        onSelect={(value) => setCosts((current) => ({ ...current, extraExpenses: value }))}
+      />
+
+      <div className="mt-4 rounded-xl border border-white/15 bg-[#242424] p-4">
+        <div className="mb-3 flex items-center justify-between gap-3">
+          <div>
+            <div className="text-xs font-bold uppercase tracking-wider text-stone-400">
+              Invitados sin pago
+            </div>
+            <p className="mt-1 text-xs leading-relaxed text-stone-500">
+              Comen, pero no dividen el presupuesto.
+            </p>
+          </div>
+          <span className="rounded-full border border-[#ea580c]/40 px-2 py-1 text-xs font-black text-[#ea580c]">
+            Pagan {payingPeople}
+          </span>
+        </div>
+        <div className="flex items-center justify-between gap-4">
+          <IconButton label="Restar invitado sin pago" onClick={() => updateNonPayingPeople(nonPayingPeople - 1)}>
+            <Minus className="h-4 w-4" />
+          </IconButton>
+          <input
+            aria-label="Invitados sin pago"
+            inputMode="numeric"
+            pattern="[0-9]*"
+            value={nonPayingPeople || ''}
+            onInput={(event) => updateNonPayingPeople(parseWholeNumber(event.currentTarget.value))}
+            placeholder="0"
+            className="h-14 w-28 rounded-xl border border-white/15 bg-[#1a1a1a] text-center text-3xl font-black leading-none text-white outline-none transition focus:border-[#ea580c]"
+          />
+          <IconButton label="Sumar invitado sin pago" onClick={() => updateNonPayingPeople(nonPayingPeople + 1)}>
+            <Plus className="h-4 w-4" />
+          </IconButton>
+        </div>
+      </div>
+
+      {isEmptyState ? (
+        <div className="mt-4 rounded-xl border border-dashed border-white/20 bg-[#242424] p-5 text-sm font-bold text-stone-300 md:p-6">
+          Definí los comensales para estimar el presupuesto.
+        </div>
+      ) : (
+        <div key={`cost-${resultsAnimationKey}`} className="result-animate mt-4 grid gap-4 sm:grid-cols-2">
+          <Metric
+            emoji="💵"
+            label="Total estimado"
+            value={`$${currency.format(totalCostEstimate)}`}
+            detail="ARS"
+            featured
+          />
+          <Metric
+            emoji="👥"
+            label="Personas que pagan"
+            value={`${payingPeople}`}
+            detail={`${nonPayingPeople} invitados sin pago`}
+            featured
+          />
+          <Metric
+            emoji="👤"
+            label="Por cabeza"
+            value={payingPeople > 0 ? `$${currency.format(costPerPerson)}` : '$0'}
+            detail={payingPeople > 0 ? 'ARS por persona que paga' : 'sin pagadores'}
+            featured
+          />
+        </div>
+      )}
+
+      <button
+        onClick={shareDetails}
+        disabled={isEmptyState}
+        className="mt-4 inline-flex min-h-12 w-full items-center justify-center gap-2 rounded-xl bg-[#ea580c] px-4 py-3 text-sm font-black text-white shadow-[0_10px_22px_rgba(234,88,12,0.22)] transition duration-200 ease-in-out hover:bg-[#c2410c] disabled:cursor-not-allowed disabled:bg-stone-700 disabled:shadow-none"
+      >
+        <Share2 className="h-4 w-4" />
+        Compartir lista
+      </button>
+    </Panel>
+  );
+
   return (
     <div className="min-h-screen bg-[#1a1a1a] text-stone-100">
       <header className="sticky top-0 z-10 border-b border-white/15 bg-[#1a1a1a]/95 backdrop-blur">
@@ -950,6 +1078,8 @@ Presupuesto estimado: $${currency.format(totalCostEstimate)} ARS total / $${curr
               <ForecastPanel forecast={forecast} onRefresh={fetchForecast} />
             </>
           )}
+
+          {scenario === 'quincho' && budgetPanel}
         </section>
 
         <section className="flex flex-col gap-4 md:sticky md:top-24 md:self-start">
@@ -1044,73 +1174,7 @@ Presupuesto estimado: $${currency.format(totalCostEstimate)} ARS total / $${curr
             )}
           </Panel>
 
-          <Panel title="Presupuesto" icon={<DollarSign className="h-5 w-5 text-[#ea580c]" />}>
-            <CostInput
-              label="Precio carne"
-              value={costs.meatPricePerKg}
-              unit="ARS/kg"
-              onChange={(value) => setCosts((current) => ({ ...current, meatPricePerKg: value }))}
-            />
-            <PresetButtons
-              label="Carne"
-              values={MEAT_PRICE_PRESETS}
-              onSelect={(value) => setCosts((current) => ({ ...current, meatPricePerKg: value }))}
-            />
-            <CostInput
-              label="Bolsa de carbón"
-              value={costs.carbonPricePerBag}
-              unit="ARS"
-              onChange={(value) => setCosts((current) => ({ ...current, carbonPricePerBag: value }))}
-            />
-            <PresetButtons
-              label="Carbón"
-              values={COAL_PRICE_PRESETS}
-              onSelect={(value) => setCosts((current) => ({ ...current, carbonPricePerBag: value }))}
-            />
-            <CostInput
-              label="Extras"
-              value={costs.extraExpenses}
-              unit="ARS"
-              onChange={(value) => setCosts((current) => ({ ...current, extraExpenses: value }))}
-            />
-            <PresetButtons
-              label="Extras"
-              values={EXTRA_PRICE_PRESETS}
-              onSelect={(value) => setCosts((current) => ({ ...current, extraExpenses: value }))}
-            />
-
-            {isEmptyState ? (
-              <div className="mt-4 rounded-xl border border-dashed border-white/20 bg-[#242424] p-5 text-sm font-bold text-stone-300 md:p-6">
-                Definí los comensales para estimar el presupuesto.
-              </div>
-            ) : (
-              <div key={`cost-${resultsAnimationKey}`} className="result-animate mt-4 grid gap-4 sm:grid-cols-2">
-                <Metric
-                  emoji="💵"
-                  label="Total estimado"
-                  value={`$${currency.format(totalCostEstimate)}`}
-                  detail="ARS"
-                  featured
-                />
-                <Metric
-                  emoji="👤"
-                  label="Por cabeza"
-                  value={`$${currency.format(costPerPerson)}`}
-                  detail="ARS por persona"
-                  featured
-                />
-              </div>
-            )}
-
-            <button
-              onClick={shareDetails}
-              disabled={isEmptyState}
-              className="mt-4 inline-flex min-h-12 w-full items-center justify-center gap-2 rounded-xl bg-[#ea580c] px-4 py-3 text-sm font-black text-white shadow-[0_10px_22px_rgba(234,88,12,0.22)] transition duration-200 ease-in-out hover:bg-[#c2410c] disabled:cursor-not-allowed disabled:bg-stone-700 disabled:shadow-none"
-            >
-              <Share2 className="h-4 w-4" />
-              Compartir lista
-            </button>
-          </Panel>
+          {scenario !== 'quincho' && budgetPanel}
         </section>
       </main>
 
