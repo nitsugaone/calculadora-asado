@@ -2,6 +2,7 @@ export type CutType =
   | 'sin_hueso'
   | 'con_hueso'
   | 'premium'
+  | 'cordero'
   | 'cerdo'
   | 'pollo'
   | 'mixto_cerdo'
@@ -66,6 +67,11 @@ export interface AsadoResult {
     label: string;
     amount: number;
   }>;
+  corderoPlan?: {
+    mediasReses: number;
+    pesoTotalKg: number;
+    descripcion: string;
+  };
 }
 
 export interface SplitCostConfig {
@@ -125,4 +131,6 @@ export interface SavedAsadoSession {
   carbonKg: number;
   costPerPerson: number;
   feedback: AsadoFeedback;
+  totalARS?: number;
+  calibrationK?: number;
 }

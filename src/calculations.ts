@@ -8,6 +8,8 @@ import {
   SavedAsadoSession,
   ScenarioType,
 } from './types';
+import { calcularCombustible, calcularFactorFuego } from './lib/combustible';
+import { calcularCordero } from './lib/cordero';
 
 type MeatPart = 'vacio' | 'tira' | 'cerdo' | 'pollo';
 
@@ -28,6 +30,7 @@ interface CutTypeConfig {
 
 export const CUT_TYPE_OPTIONS: Array<[CutType, string]> = [
   ['premium', 'Premium mix'],
+  ['cordero', 'Cordero patagónico'],
   ['con_hueso', 'Vacuno con hueso'],
   ['sin_hueso', 'Vacuno sin hueso'],
   ['cerdo', 'Cerdo'],
@@ -59,6 +62,12 @@ const CUT_TYPE_CONFIG: Record<CutType, CutTypeConfig> = {
       { part: 'vacio', label: 'Vacío', share: 0.5 },
       { part: 'tira', label: 'Tira', share: 0.5 },
     ],
+  },
+  cordero: {
+    label: 'Cordero patagónico',
+    shortLabel: 'Cordero',
+    grams: RAW_MEAT_GRAMS_BY_PROFILE,
+    mix: [],
   },
   cerdo: {
     label: 'Cerdo',
@@ -112,7 +121,8 @@ export function calculateAsado(
   scenario: ScenarioType,
   temp: number,
   wind: number,
-  advancedDist?: { hombres: number; mujeres: number; ninos: number } | null
+  advancedDist?: { hombres: number; mujeres: number; ninos: number } | null,
+  calibrationK = 1
 ): AsadoResult {
   let hombres = Math.round(totalPeople * 0.4);
   let mujeres = Math.round(totalPeople * 0.4);
@@ -129,8 +139,11 @@ export function calculateAsado(
   const adultFemaleBase = config.grams.mujeres;
   const childBase = config.grams.ninos;
 
-  const totalCarne =
-    (hombres * adultMaleBase + mujeres * adultFemaleBase + ninos * childBase) / 1000;
+  const baseCarne =
+    ((hombres * adultMaleBase + mujeres * adultFemaleBase + ninos * childBase) / 1000) *
+    calibrationK;
+  const corderoPlan = cutType === 'cordero' ? calcularCordero(totalPeople, baseCarne) : undefined;
+  const totalCarne = corderoPlan ? corderoPlan.pesoTotalKg : baseCarne;
 
   const meatTotals: Record<MeatPart, number> = {
     vacio: 0,
@@ -138,39 +151,31 @@ export function calculateAsado(
     cerdo: 0,
     pollo: 0,
   };
-  const meatBreakdown = config.mix.map((item) => {
-    const amount = Number((totalCarne * item.share).toFixed(1));
-    meatTotals[item.part] += amount;
-    return {
-      label: item.label,
-      amount,
-    };
-  });
+  const meatBreakdown = corderoPlan
+    ? [
+        {
+          label: corderoPlan.descripcion,
+          amount: Number(corderoPlan.pesoTotalKg.toFixed(1)),
+        },
+      ]
+    : config.mix.map((item) => {
+        const amount = Number((totalCarne * item.share).toFixed(1));
+        meatTotals[item.part] += amount;
+        return {
+          label: item.label,
+          amount,
+        };
+      });
 
   const choriTotal = Math.ceil(hombres * 1.0 + mujeres * 0.8 + ninos * 0.5);
   const morciTotal = Math.ceil((hombres + mujeres) * 0.4 + ninos * 0.1);
   const achurasTotal = Math.round((hombres + mujeres) * 0.12 * 10) / 10;
 
-  let factorFuego = 1.0;
-
-  if (scenario !== 'quincho') {
-    const base = scenario === 'chulengo' ? 1.1 : 1.25;
-    let penFrio = temp < 15 ? (15 - temp) * 0.035 : 0;
-    let penViento = (wind / 10) * 0.12;
-
-    if (scenario === 'chulengo') {
-      penFrio *= 0.5;
-      penViento *= 0.3;
-    }
-
-    factorFuego = Math.min(base + penFrio + penViento, 3.0);
-  }
-
   const baseCarbon = 4.0 + totalPeople * 0.32;
   const baseLena = 3.0 + totalPeople * 0.18;
-
-  const carbonTotal = Number((baseCarbon * factorFuego).toFixed(1));
-  const lenaTotal = Number((baseLena * factorFuego).toFixed(1));
+  const factorFuego = calcularFactorFuego(temp, wind, scenario);
+  const carbonTotal = calcularCombustible(baseCarbon, temp, wind, scenario);
+  const lenaTotal = calcularCombustible(baseLena, temp, wind, scenario);
 
   return {
     carneTotal: Number(totalCarne.toFixed(1)),
@@ -192,6 +197,7 @@ export function calculateAsado(
       ninos: childBase,
     },
     meatBreakdown,
+    corderoPlan,
   };
 }
 
@@ -324,6 +330,15 @@ export function getWeatherAdvice(scenario: ScenarioType, temp: number, wind: num
       message:
         'Riesgo extremo: ráfagas de más de 70 km/h. Es muy difícil mantener calor estable y no conviene prender fuego afuera.',
       color: 'text-rose-400 border-rose-500/30 bg-rose-500/10 animate-pulse',
+      isSafe: false,
+    };
+  }
+
+  if (scenario === 'afuera' && wind > 50) {
+    return {
+      message:
+        'Alerta de viento abierto: con más de 50 km/h conviene buscar reparo, pasar a chulengo o posponer el fuego.',
+      color: 'text-rose-200 border-rose-500/30 bg-rose-500/10',
       isSafe: false,
     };
   }

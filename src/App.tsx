@@ -34,6 +34,15 @@ import {
   getWeatherAdvice,
   scoreForecastSlot,
 } from './calculations';
+import { actualizarK, formatK, obtenerK } from './lib/calibracion';
+import { tieneAlertaVientoAbierto } from './lib/combustible';
+import { decodificarUrlCompartible, generarUrlCompartible } from './lib/share';
+import { guardarLog } from './lib/storage';
+import {
+  getStoredWeatherSnapshot,
+  saveStoredWeatherSnapshot,
+  useWeatherAutoFill,
+} from './hooks/useWeatherAutoFill';
 import {
   AsadoFeedback,
   ChecklistCategory,
@@ -91,6 +100,9 @@ type OpenMeteoForecast = {
 };
 
 export default function App() {
+  const rememberedWeather = useWeatherAutoFill(true);
+  const [initialWeather] = useState(getStoredWeatherSnapshot);
+  const [calibrationK, setCalibrationK] = useState(obtenerK);
   const [totalPeople, setTotalPeople] = useState(12);
   const [nonPayingPeople, setNonPayingPeople] = useState(0);
   const [demographics, setDemographics] = useState<ParticipantConfig>({
@@ -101,8 +113,8 @@ export default function App() {
   const [showAdvancedDemo, setShowAdvancedDemo] = useState(false);
   const [cutType, setCutType] = useState<CutType>('premium');
   const [scenario, setScenario] = useState<ScenarioType>('chulengo');
-  const [temp, setTemp] = useState(8);
-  const [wind, setWind] = useState(35);
+  const [temp, setTemp] = useState(initialWeather.temp);
+  const [wind, setWind] = useState(initialWeather.wind);
   const [costs, setCosts] = useState<SplitCostConfig>({
     meatPricePerKg: DEFAULT_MEAT_PRICE,
     carbonPricePerBag: DEFAULT_COAL_PRICE,
@@ -122,12 +134,12 @@ export default function App() {
     typeof navigator === 'undefined' ? true : navigator.onLine
   );
   const [weather, setWeather] = useState<WeatherStatus>({
-    temp: 8,
-    wind: 35,
+    temp: initialWeather.temp,
+    wind: initialWeather.wind,
     loading: false,
-    isReal: false,
-    locationName: 'Río Gallegos (manual)',
-    conditionText: 'Clima ventoso de referencia',
+    isReal: initialWeather.isReal,
+    locationName: initialWeather.locationName,
+    conditionText: initialWeather.conditionText,
     error: null,
   });
   const [forecast, setForecast] = useState<ForecastState>(emptyForecast);
@@ -145,6 +157,29 @@ export default function App() {
   const toggleSettingsSection = (section: string) => {
     setOpenSettings((current) => ({ ...current, [section]: !current[section] }));
   };
+
+  useEffect(() => {
+    if (new URLSearchParams(window.location.search).has('state')) return;
+    if (!rememberedWeather.isReal) return;
+
+    setTemp(rememberedWeather.temp);
+    setWind(rememberedWeather.wind);
+    setWeather({
+      temp: rememberedWeather.temp,
+      wind: rememberedWeather.wind,
+      loading: false,
+      isReal: true,
+      locationName: rememberedWeather.locationName,
+      conditionText: rememberedWeather.conditionText,
+      error: null,
+    });
+  }, [
+    rememberedWeather.conditionText,
+    rememberedWeather.isReal,
+    rememberedWeather.locationName,
+    rememberedWeather.temp,
+    rememberedWeather.wind,
+  ]);
 
   useEffect(() => {
     if (!showAdvancedDemo) {
@@ -176,6 +211,37 @@ export default function App() {
       }
     }
 
+    const sharedParam = new URLSearchParams(window.location.search).get('state');
+    const sharedState = sharedParam ? decodificarUrlCompartible(sharedParam) : null;
+    if (sharedState) {
+      const sharedPeople = safeNumber(sharedState.com, totalPeople);
+      const sharedNonPaying = safeNumber(sharedState.np, nonPayingPeople);
+      const sharedTemp = safeNumber(sharedState.tmp, temp);
+      const sharedWind = safeNumber(sharedState.wnd, wind);
+
+      setTotalPeople(Math.max(0, Math.round(sharedPeople)));
+      setNonPayingPeople(Math.max(0, Math.round(sharedNonPaying)));
+      setTemp(Math.round(sharedTemp));
+      setWind(Math.round(sharedWind));
+      if (isScenarioType(sharedState.ent)) setScenario(sharedState.ent);
+      if (isCutType(sharedState.cut)) setCutType(sharedState.cut);
+      setCosts({
+        meatPricePerKg: Math.max(0, Math.round(safeNumber(sharedState.pKg, DEFAULT_MEAT_PRICE))),
+        carbonPricePerBag: Math.max(0, Math.round(safeNumber(sharedState.pCoal, DEFAULT_COAL_PRICE))),
+        extraExpenses: Math.max(0, Math.round(safeNumber(sharedState.ext, DEFAULT_EXTRA_PRICE))),
+      });
+      setWeather((previous) => ({
+        ...previous,
+        temp: Math.round(sharedTemp),
+        wind: Math.round(sharedWind),
+        isReal: false,
+        locationName: 'Clima del enlace compartido',
+        conditionText: 'Valores congelados',
+        error: null,
+      }));
+      showNotice('Presupuesto compartido restaurado con precios congelados.');
+    }
+
     window.addEventListener('online', handleOnline);
     window.addEventListener('offline', handleOffline);
     window.addEventListener('beforeinstallprompt', handleInstallPrompt);
@@ -189,8 +255,8 @@ export default function App() {
 
   const advancedDist = showAdvancedDemo ? demographics : null;
   const results = useMemo(
-    () => calculateAsado(totalPeople, cutType, scenario, temp, wind, advancedDist),
-    [advancedDist, cutType, scenario, temp, totalPeople, wind]
+    () => calculateAsado(totalPeople, cutType, scenario, temp, wind, advancedDist, calibrationK),
+    [advancedDist, calibrationK, cutType, scenario, temp, totalPeople, wind]
   );
   const extras = useMemo(
     () => calculateExtras(totalPeople, advancedDist, extrasConfig),
@@ -199,6 +265,7 @@ export default function App() {
   const adviceStatus = getWeatherAdvice(scenario, temp, wind);
   const thermoTips = getThermodynamicAdvice(temp, wind);
   const feedbackAdjustment = getFeedbackAdjustment(history);
+  const openWindAlert = tieneAlertaVientoAbierto(scenario, wind);
   const isEmptyState = totalPeople <= 0;
   const resultsAnimationKey = [
     totalPeople,
@@ -213,6 +280,7 @@ export default function App() {
     extras.waterLiters,
     extras.beerLiters,
     nonPayingPeople,
+    calibrationK,
   ].join('|');
 
   const totalCostEstimate =
@@ -380,6 +448,30 @@ export default function App() {
     triggerHaptic(8);
   };
 
+  const updateManualTemp = (value: number) => {
+    setTemp(value);
+    setWeather((previous) => ({
+      ...previous,
+      temp: value,
+      isReal: false,
+      locationName: 'Río Gallegos (manual)',
+      conditionText: 'Ajuste manual',
+      error: null,
+    }));
+  };
+
+  const updateManualWind = (value: number) => {
+    setWind(value);
+    setWeather((previous) => ({
+      ...previous,
+      wind: value,
+      isReal: false,
+      locationName: 'Río Gallegos (manual)',
+      conditionText: 'Ajuste manual',
+      error: null,
+    }));
+  };
+
   const updateDemographic = (key: keyof ParticipantConfig, value: number) => {
     const next = { ...demographics, [key]: Math.max(0, value) };
     setDemographics(next);
@@ -424,6 +516,13 @@ export default function App() {
         locationName: 'Río Gallegos',
         conditionText: `${currentCondition}, ráfagas ${currentGust} km/h`,
         error: null,
+      });
+      saveStoredWeatherSnapshot({
+        temp: currentTemp,
+        wind: currentWind,
+        isReal: true,
+        locationName: 'Río Gallegos',
+        conditionText: `${currentCondition}, ráfagas ${currentGust} km/h`,
       });
       setTemp(currentTemp);
       setWind(currentWind);
@@ -514,6 +613,9 @@ export default function App() {
   };
 
   const saveSession = (feedback: AsadoFeedback) => {
+    const nextCalibrationK = actualizarK(feedback);
+    setCalibrationK(nextCalibrationK);
+
     const nextSession: SavedAsadoSession = {
       id: String(Date.now()),
       date: new Date().toISOString(),
@@ -526,12 +628,28 @@ export default function App() {
       carbonKg: results.carbonTotal,
       costPerPerson,
       feedback,
+      totalARS: totalCostEstimate,
+      calibrationK: nextCalibrationK,
     };
 
     const nextHistory = [nextSession, ...history].slice(0, 8);
     setHistory(nextHistory);
     window.localStorage.setItem(HISTORY_KEY, JSON.stringify(nextHistory));
-    showNotice('Asado guardado en el historial.');
+    guardarLog({
+      id: nextSession.id,
+      timestamp: Date.now(),
+      comensalesCount: totalPeople,
+      entorno: scenario,
+      clima: { temp, viento: wind },
+      calculado: { carneKg: results.carneTotal, carbonKg: results.carbonTotal },
+      precios: { totalARS: totalCostEstimate, porCabeza: costPerPerson },
+      feedback: {
+        estadoCarne: feedback,
+        estadoCarbon: feedback,
+        ajusteAplicado: feedback !== 'perfecto',
+      },
+    });
+    showNotice(`Asado guardado. Calibración global: ${formatK(nextCalibrationK)}.`);
   };
 
   const deleteSession = (sessionId: string) => {
@@ -542,6 +660,19 @@ export default function App() {
 
   const shareDetails = async () => {
     triggerHaptic(30);
+    const shareUrl = generarUrlCompartible({
+      com: totalPeople,
+      ent: scenario,
+      tmp: temp,
+      wnd: wind,
+      cut: cutType,
+      np: nonPayingPeople,
+      pKg: costs.meatPricePerKg,
+      pCoal: costs.carbonPricePerBag,
+      ext: costs.extraExpenses,
+      tot: totalCostEstimate,
+      cab: costPerPerson,
+    });
     const forecastLine = forecast.bestSlot
       ? `Mejor horario: ${forecast.bestSlot.label} (${forecast.bestSlot.wind} km/h, ráfagas ${forecast.bestSlot.gust} km/h)`
       : 'Pronóstico: pendiente';
@@ -569,10 +700,22 @@ Resumen:
 Lista de compras:
 ${listText}
 
-${shareBudgetLine}`;
+${shareBudgetLine}
+Precios congelados: carne $${currency.format(costs.meatPricePerKg)}/kg, carbón $${currency.format(costs.carbonPricePerBag)} por bolsa, extras $${currency.format(costs.extraExpenses)}.
+Enlace: ${shareUrl}`;
+
+    guardarLog({
+      id: `share-${Date.now()}`,
+      timestamp: Date.now(),
+      comensalesCount: totalPeople,
+      entorno: scenario,
+      clima: { temp, viento: wind },
+      calculado: { carneKg: results.carneTotal, carbonKg: results.carbonTotal },
+      precios: { totalARS: totalCostEstimate, porCabeza: costPerPerson },
+    });
 
     if (navigator.share) {
-      await navigator.share({ title: 'Asado Pro Río Gallegos', text }).catch(() => undefined);
+      await navigator.share({ title: 'Asado Pro Río Gallegos', text, url: shareUrl }).catch(() => undefined);
       return;
     }
 
@@ -602,6 +745,10 @@ ${shareBudgetLine}`;
           <span className="font-black text-stone-100">Gramos base carne cruda:</span>{' '}
           {results.gramsByProfile.hombres}g hombre · {results.gramsByProfile.mujeres}g mujer ·{' '}
           {results.gramsByProfile.ninos}g niño
+        </div>
+        <div className="mt-3 rounded-xl border border-[#ea580c]/30 bg-[#ea580c]/10 p-4 text-xs leading-relaxed text-stone-100">
+          <span className="font-black">Calibración global:</span> {formatK(calibrationK)}. Se ajusta
+          solo cuando guardás cómo salió el asado.
         </div>
 
         <div className="mt-4">
@@ -1045,7 +1192,7 @@ ${shareBudgetLine}`;
                   min={-10}
                   max={35}
                   unit="°C"
-                  onChange={setTemp}
+                  onChange={updateManualTemp}
                   icon={<Thermometer className="h-4 w-4 text-sky-300" />}
                 />
                 <Slider
@@ -1054,13 +1201,20 @@ ${shareBudgetLine}`;
                   min={0}
                   max={110}
                   unit="km/h"
-                  onChange={setWind}
+                  onChange={updateManualWind}
                   icon={<Wind className="h-4 w-4 text-[#ea580c]" />}
                 />
 
                 <div aria-live="polite" className={`mt-4 rounded-xl border p-4 text-sm font-bold ${adviceStatus.color}`}>
                   {adviceStatus.message}
                 </div>
+
+                {openWindAlert && (
+                  <div className="mt-3 rounded-xl border border-rose-500/35 bg-rose-500/10 p-4 text-sm font-bold text-rose-100">
+                    Viento mayor a 50 km/h en intemperie: usá reparo real, pasá a chulengo o
+                    evitá prender fuego abierto.
+                  </div>
+                )}
 
                 {weather.isReal && (
                   <p className="mt-2 text-xs text-sky-300">
@@ -1096,7 +1250,7 @@ ${shareBudgetLine}`;
                     emoji="🥩"
                     label="Carne"
                     value={`${results.carneTotal} kg`}
-                    detail={`${getCutTypeLabel(cutType)} · ≈ ${totalPeople} porciones`}
+                    detail={results.corderoPlan?.descripcion ?? `${getCutTypeLabel(cutType)} · ≈ ${totalPeople} porciones`}
                     featured
                   />
                   <Metric
@@ -1136,6 +1290,18 @@ ${shareBudgetLine}`;
                   />
                 </div>
 
+                {results.corderoPlan && (
+                  <div className="mt-4 rounded-xl border border-[#ea580c]/30 bg-[#ea580c]/10 p-5 text-sm leading-relaxed text-stone-100 md:p-6">
+                    <div className="text-xs font-bold uppercase tracking-wider text-[#ea580c]">
+                      Compra patagónica
+                    </div>
+                    <p className="mt-2 font-bold">
+                      Pedí {results.corderoPlan.descripcion}: {results.corderoPlan.pesoTotalKg} kg
+                      estimados en {results.corderoPlan.mediasReses} medias reses.
+                    </p>
+                  </div>
+                )}
+
                 <div className="mt-4 rounded-xl border border-white/15 bg-[#242424] p-5 md:p-6">
                   <div className="text-xs font-bold uppercase tracking-wider text-stone-400">
                     Desglose carne
@@ -1162,7 +1328,8 @@ ${shareBudgetLine}`;
                         Factor térmico
                       </span>
                       <p className="mt-1 text-xs leading-relaxed text-stone-400">
-                        Parte de 1x en quincho. Afuera suma penalización por frío menor a 15°C y viento; chulengo reduce ese impacto.
+                        Fórmula: 1 + ((0.02 × frío bajo 15°C) + (0.015 × viento)) × entorno.
+                        Quincho anula el clima, chulengo toma 45% e intemperie 100%.
                       </p>
                     </div>
                     <span className="font-mono text-[2.5rem] font-black leading-none text-[#ea580c]">
@@ -1328,6 +1495,7 @@ function HistoryContent({
               </div>
               <div className="text-xs text-stone-400">
                 {session.people} pers · {session.meatKg} kg carne · ${currency.format(session.costPerPerson)}
+                {session.calibrationK ? ` · K ${formatK(session.calibrationK)}` : ''}
               </div>
             </div>
             <button
@@ -1703,6 +1871,19 @@ function meatEmoji(label: string) {
 function formatPerPerson(amount: number, people: number) {
   if (people <= 0) return '0';
   return (Math.round((amount / people) * 10) / 10).toLocaleString('es-AR');
+}
+
+function safeNumber(value: unknown, fallback: number) {
+  const parsed = typeof value === 'number' ? value : Number(value);
+  return Number.isFinite(parsed) ? parsed : fallback;
+}
+
+function isScenarioType(value: string): value is ScenarioType {
+  return ['quincho', 'chulengo', 'afuera'].includes(value);
+}
+
+function isCutType(value: string): value is CutType {
+  return CUT_TYPE_OPTIONS.some(([key]) => key === value);
 }
 
 function feedbackLabel(feedback: AsadoFeedback) {

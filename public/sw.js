@@ -1,5 +1,11 @@
-const CACHE_NAME = 'asado-pro-cache-v7';
-const ASSETS_TO_CACHE = ['/', '/index.html', '/manifest.json', '/icon.svg'];
+const CACHE_NAME = 'asado-pro-cache-v8';
+const SCOPE_PATH = new URL(self.registration.scope).pathname;
+const ASSETS_TO_CACHE = [
+  SCOPE_PATH,
+  `${SCOPE_PATH}index.html`,
+  `${SCOPE_PATH}manifest.json`,
+  `${SCOPE_PATH}icon.svg`,
+];
 
 self.addEventListener('install', (event) => {
   event.waitUntil(
@@ -48,7 +54,7 @@ self.addEventListener('fetch', (event) => {
         })
         .catch(() => {
           if (event.request.headers.get('accept')?.includes('text/html')) {
-            return caches.match('/');
+            return caches.match(SCOPE_PATH);
           }
           return undefined;
         });
@@ -65,7 +71,7 @@ self.addEventListener('notificationclick', (event) => {
           return client.focus();
         }
       }
-      return clients.openWindow ? clients.openWindow('/') : undefined;
+      return clients.openWindow ? clients.openWindow(SCOPE_PATH) : undefined;
     })
   );
 });
