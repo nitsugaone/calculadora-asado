@@ -3,6 +3,8 @@
   - Reemplacé estilos dependientes de Tailwind/React por CSS vanilla.
   - Agregué layout responsive, cards de resultado, modal imprimible, sr-only
     y estados accesibles de foco.
+  - Corregí desbordes de cards, number inputs sin flechas, historial con acciones,
+    modal con saltos de línea y filas de pronóstico compactas.
 */
 :root {
   --fondo: #1a1a1a;
@@ -271,6 +273,16 @@ input[type="range"] {
   accent-color: var(--acento);
 }
 
+input[type="number"]::-webkit-outer-spin-button,
+input[type="number"]::-webkit-inner-spin-button {
+  margin: 0;
+  -webkit-appearance: none;
+}
+
+input[type="number"] {
+  -moz-appearance: textfield;
+}
+
 .emojis-personas {
   min-height: 34px;
   overflow: hidden;
@@ -347,7 +359,8 @@ input[type="range"] {
 .aviso--riesgo {
   border-color: rgba(251, 113, 133, 0.45);
   background: rgba(251, 113, 133, 0.12);
-  color: #ffe4e6;
+  color: #ef4444 !important;
+  font-weight: 700;
 }
 
 .panel-secundario {
@@ -362,13 +375,14 @@ input[type="range"] {
 }
 
 .fila-pronostico {
-  display: grid;
-  grid-template-columns: 1fr auto;
-  gap: 8px;
-  border: 1px solid var(--borde);
-  border-radius: 12px;
-  background: #191919;
-  padding: 12px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.5rem;
+  border-radius: 0.5rem;
+  background: rgba(255, 255, 255, 0.03);
+  padding: 0.6rem 0.8rem;
+  font-size: 0.8rem;
 }
 
 .fila-pronostico strong {
@@ -377,14 +391,15 @@ input[type="range"] {
 }
 
 .badge {
+  flex-shrink: 0;
   display: inline-flex;
   align-items: center;
   border-radius: 999px;
   background: rgba(234, 88, 12, 0.15);
-  color: var(--texto);
-  padding: 4px 8px;
+  color: #fb923c;
+  padding: 0.2rem 0.5rem;
   font-size: 0.75rem;
-  font-weight: 950;
+  font-weight: 700;
 }
 
 .resumen-comensales {
@@ -398,54 +413,77 @@ input[type="range"] {
   line-height: 1.5;
 }
 
+#resultadoCards,
 .resultado-grid {
   display: grid;
-  gap: 16px;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 1rem;
 }
 
 .card-resultado {
+  display: flex;
+  min-width: 0;
+  flex-direction: column;
+  justify-content: space-between;
+  overflow: hidden;
+  word-break: break-word;
+  overflow-wrap: break-word;
   min-width: 0;
   border: 1px solid var(--borde);
-  border-radius: var(--radio);
+  border-radius: 0.75rem;
   background: var(--panel-2);
-  padding: 20px;
+  padding: 1rem;
   box-shadow: 0 12px 28px rgba(0, 0, 0, 0.18);
 }
 
 .card-resultado__arriba {
   display: flex;
-  align-items: flex-start;
+  align-items: center;
   justify-content: space-between;
-  gap: 12px;
+  gap: 0.5rem;
 }
 
 .card-resultado__titulo {
+  flex: 1 1 auto;
+  overflow: hidden;
   color: var(--texto-suave);
   font-size: 0.78rem;
   font-weight: 950;
   letter-spacing: 0.05em;
   text-transform: uppercase;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .card-resultado__emoji {
-  font-size: 1.8rem;
+  flex-shrink: 0;
+  font-size: 1.25rem;
   line-height: 1;
 }
 
 .card-resultado__valor {
   margin-top: 12px;
   color: var(--acento);
-  font-size: clamp(2.5rem, 12vw, 4rem);
-  font-weight: 1000;
-  line-height: 0.95;
+  font-size: clamp(1.5rem, 6vw, 2.5rem);
+  font-weight: 800;
+  line-height: 1.1;
+  word-break: break-word;
+  overflow-wrap: break-word;
+}
+
+.card-resultado:last-child .card-resultado__valor {
+  font-size: clamp(1.8rem, 7vw, 3rem);
 }
 
 .card-resultado__detalle {
-  margin-top: 10px;
+  margin-top: 0.35rem;
   color: var(--muted);
-  font-size: 0.86rem;
+  font-size: 0.75rem;
   font-weight: 750;
   line-height: 1.45;
+  opacity: 0.6;
+  word-break: break-word;
+  overflow-wrap: break-word;
 }
 
 .acciones {
@@ -512,11 +550,20 @@ input[type="range"] {
   padding: 12px;
 }
 
+.historial-lista {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+}
+
 .historial-item {
-  display: grid;
-  gap: 4px;
-  border-bottom: 1px solid var(--borde);
-  padding: 12px 4px;
+  display: flex;
+  flex-direction: column;
+  border-bottom: 0;
+  border-radius: 0.5rem;
+  background: rgba(255, 255, 255, 0.03);
+  padding: 0.6rem 0.8rem;
+  font-size: 0.8rem;
 }
 
 .historial-item:last-child {
@@ -530,6 +577,31 @@ input[type="range"] {
 .historial-item span {
   color: var(--texto-suave);
   font-size: 0.88rem;
+}
+
+.historial-acciones {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+  margin-top: 0.45rem;
+}
+
+.btn-cargar,
+.btn-borrar-historial {
+  align-self: flex-start;
+  margin-top: 0.3rem;
+  border: 1px solid rgba(255, 255, 255, 0.15);
+  border-radius: 0.35rem;
+  background: transparent;
+  color: #fff;
+  padding: 0.25rem 0.6rem;
+  font-size: 0.75rem;
+  cursor: pointer;
+}
+
+.btn-borrar-historial {
+  border-color: rgba(239, 68, 68, 0.4);
+  color: #fecaca;
 }
 
 .modal-lista {
@@ -574,16 +646,19 @@ input[type="range"] {
   font-size: 1.4rem;
 }
 
+#contenidoLista,
 .lista-limpia {
   max-height: 60vh;
   margin: 0;
   overflow: auto;
-  padding: 20px;
+  border-radius: 0.5rem;
+  background: #121212;
+  padding: 1rem;
   color: var(--texto);
-  font-family: "SFMono-Regular", Consolas, monospace;
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
   font-size: 0.92rem;
-  line-height: 1.55;
-  white-space: pre-wrap;
+  line-height: 1.7;
+  white-space: pre-line;
 }
 
 .pie {
@@ -614,6 +689,13 @@ input[type="range"] {
 
   .resultado-grid {
     grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+
+@media (max-width: 480px) {
+  #resultadoCards,
+  .resultado-grid {
+    grid-template-columns: 1fr;
   }
 }
 

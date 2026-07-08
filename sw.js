@@ -1,4 +1,4 @@
-const CACHE_NAME = 'asado-pro-vanilla-v1';
+const CACHE_NAME = 'asado-pro-vanilla-v2';
 const ARCHIVOS_CACHE = ['./', './index.html', './style.css', './script.js'];
 
 self.addEventListener('install', (event) => {

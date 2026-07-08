@@ -1,9 +1,9 @@
 /*
   CHANGELOG
-  - Implementé la calculadora completa en JavaScript vanilla.
-  - Corregí formato argentino, porciones coherentes, factor térmico para carbón/leña,
-    invitados sin pago, validación de precios, debounce, historial, WhatsApp,
-    lista imprimible, pronóstico y service worker.
+  - Agregué card de morcillas, penalización por calor extremo y kg siempre con 1 decimal.
+  - Reemplacé renderizados masivos de HTML crudo por creación segura de nodos DOM.
+  - Corregí inputs de precio type=number, cursor jumping, persistencia de formulario,
+    historial completo con Cargar/Borrar, copiar con feedback y pronóstico solo bajo demanda.
 */
 const FORMATO_AR = new Intl.NumberFormat('es-AR', {
   maximumFractionDigits: 1,
@@ -14,8 +14,21 @@ const PESOS_AR = new Intl.NumberFormat('es-AR', {
 });
 
 const STORAGE_HISTORIAL = 'asadoProHistorialVanilla';
+const STORAGE_ESTADO = 'asadoProEstado';
 const PORCION_ESTANDAR_GRAMOS = 450;
 const DEBOUNCE_MS = 300;
+
+const ESTADO_INICIAL = {
+  pagadores: 12,
+  gratis: 0,
+  modo: 'premium',
+  entorno: 'chulengo',
+  temperatura: 8,
+  viento: 25,
+  precioCarne: '',
+  precioCarbon: '',
+  extras: '',
+};
 
 const MODOS_COMPRA = {
   premium: {
@@ -55,6 +68,7 @@ const elementos = {
   precioCarne: $('#precioCarne'),
   precioCarbon: $('#precioCarbon'),
   extras: $('#extras'),
+  btnReset: $('#btnReset'),
   emojisPersonas: $('#emojisPersonas'),
   textoPersonas: $('#textoPersonas'),
   resumenComensales: $('#resumenComensales'),
@@ -78,31 +92,36 @@ const elementos = {
 
 let calculoActual = null;
 let temporizadorRender = null;
-
-function formatearDecimal(valor, maximos = 1) {
-  return Number(valor).toLocaleString('es-AR', {
-    minimumFractionDigits: Number.isInteger(Number(valor)) ? 0 : 1,
-    maximumFractionDigits: maximos,
-  });
-}
+let restaurandoEstado = false;
 
 function formatearKg(valor) {
-  return `${formatearDecimal(valor)} kg`;
+  return `${Number(valor || 0).toLocaleString('es-AR', {
+    minimumFractionDigits: 1,
+    maximumFractionDigits: 1,
+  })} kg`;
+}
+
+function formatearDecimal(valor, maximos = 1) {
+  return Number(valor || 0).toLocaleString('es-AR', {
+    maximumFractionDigits: maximos,
+  });
 }
 
 function formatearMoneda(valor) {
   return `$${PESOS_AR.format(Math.max(0, Number(valor) || 0))}`;
 }
 
-function enteroPositivoDesdeInput(input, permiteSeparadorMiles = false) {
-  const patronLimpieza = permiteSeparadorMiles ? /[^\d.]/g : /[^\d]/g;
-  const visible = String(input.value || '').replace(patronLimpieza, '');
-  const limpio = visible.replace(/\./g, '');
-  if (input.value !== visible) input.value = visible;
-  return limpio === '' ? 0 : Math.max(0, Number.parseInt(limpio, 10));
+function parsearEnteroPositivo(valor) {
+  const numero = Number(String(valor ?? '').replace(',', '.'));
+  if (!Number.isFinite(numero) || numero <= 0) return 0;
+  return Math.floor(numero);
 }
 
-function numeroClimaticoDesdeInput(input, minimo, maximo) {
+function leerEnteroInput(input) {
+  return parsearEnteroPositivo(input.value);
+}
+
+function leerNumeroClimatico(input, minimo, maximo) {
   const valor = Number.parseFloat(String(input.value).replace(',', '.'));
   if (!Number.isFinite(valor)) return minimo;
   return Math.min(maximo, Math.max(minimo, valor));
@@ -110,23 +129,26 @@ function numeroClimaticoDesdeInput(input, minimo, maximo) {
 
 function debounceRender() {
   window.clearTimeout(temporizadorRender);
-  temporizadorRender = window.setTimeout(actualizarTodo, DEBOUNCE_MS);
+  temporizadorRender = window.setTimeout(() => {
+    actualizarTodo();
+    guardarEstadoFormulario();
+  }, DEBOUNCE_MS);
 }
 
 function obtenerEstado() {
-  const modo = $('input[name="modoCompra"]:checked')?.value || 'premium';
-  const entorno = $('input[name="entorno"]:checked')?.value || 'chulengo';
+  const modo = $('input[name="modoCompra"]:checked')?.value || ESTADO_INICIAL.modo;
+  const entorno = $('input[name="entorno"]:checked')?.value || ESTADO_INICIAL.entorno;
 
   return {
-    pagadores: enteroPositivoDesdeInput(elementos.personasPagas),
-    gratis: enteroPositivoDesdeInput(elementos.invitadosGratis),
+    pagadores: leerEnteroInput(elementos.personasPagas),
+    gratis: leerEnteroInput(elementos.invitadosGratis),
     modo,
     entorno,
-    temperatura: numeroClimaticoDesdeInput(elementos.temperatura, -15, 35),
-    viento: numeroClimaticoDesdeInput(elementos.viento, 0, 120),
-    precioCarne: enteroPositivoDesdeInput(elementos.precioCarne, true),
-    precioCarbon: enteroPositivoDesdeInput(elementos.precioCarbon, true),
-    extras: enteroPositivoDesdeInput(elementos.extras, true),
+    temperatura: leerNumeroClimatico(elementos.temperatura, -15, 35),
+    viento: leerNumeroClimatico(elementos.viento, 0, 120),
+    precioCarne: leerEnteroInput(elementos.precioCarne),
+    precioCarbon: leerEnteroInput(elementos.precioCarbon),
+    extras: leerEnteroInput(elementos.extras),
   };
 }
 
@@ -143,7 +165,7 @@ function calcularFactorTermico(temperatura, viento, entorno) {
 // y solo pagadores para dividir el costo.
 function calcularAsado(estado) {
   const totalPersonas = estado.pagadores + estado.gratis;
-  const modo = MODOS_COMPRA[estado.modo];
+  const modo = MODOS_COMPRA[estado.modo] || MODOS_COMPRA.premium;
   const kgCarneTotal = redondear(totalPersonas * modo.kgCarnePorPersona, 1);
   const kgVacio = redondear(kgCarneTotal * modo.vacio, 1);
   const kgTira = redondear(kgCarneTotal * modo.tira, 1);
@@ -185,18 +207,26 @@ function redondear(valor, decimales) {
   return Math.round(valor * factor) / factor;
 }
 
+function crearNodo(etiqueta, clase, texto) {
+  const nodo = document.createElement(etiqueta);
+  if (clase) nodo.className = clase;
+  if (texto !== undefined) nodo.textContent = texto;
+  return nodo;
+}
+
 function crearCard({ emoji, alt, titulo, valor, detalle }) {
-  return `
-    <article class="card-resultado">
-      <div class="card-resultado__arriba">
-        <div class="card-resultado__titulo">${titulo}</div>
-        <span class="card-resultado__emoji" aria-hidden="true">${emoji}</span>
-        <span class="sr-only">${alt}</span>
-      </div>
-      <div class="card-resultado__valor">${valor}</div>
-      <div class="card-resultado__detalle">${detalle}</div>
-    </article>
-  `;
+  const card = crearNodo('article', 'card-resultado');
+  const arriba = crearNodo('div', 'card-resultado__arriba');
+  const tituloNodo = crearNodo('div', 'card-resultado__titulo', titulo);
+  const emojiNodo = crearNodo('span', 'card-resultado__emoji', emoji);
+  const altNodo = crearNodo('span', 'sr-only', alt);
+  const valorNodo = crearNodo('div', 'card-resultado__valor', valor);
+  const detalleNodo = crearNodo('div', 'card-resultado__detalle', detalle);
+
+  emojiNodo.setAttribute('aria-hidden', 'true');
+  arriba.append(tituloNodo, emojiNodo, altNodo);
+  card.append(arriba, valorNodo, detalleNodo);
+  return card;
 }
 
 function renderizarResultados(calculo) {
@@ -230,6 +260,13 @@ function renderizarResultados(calculo) {
       detalle: 'unidades sugeridas',
     }),
     crearCard({
+      emoji: '🩸',
+      alt: 'Morcillas',
+      titulo: 'Morcillas',
+      valor: FORMATO_AR.format(calculo.morcillas),
+      detalle: 'unidades sugeridas',
+    }),
+    crearCard({
       emoji: '🔥',
       alt: 'Carbón',
       titulo: 'Carbón',
@@ -248,13 +285,13 @@ function renderizarResultados(calculo) {
       alt: 'Presupuesto',
       titulo: 'Total estimado',
       valor: formatearMoneda(calculo.totalEstimado),
-      detalle: `${formatearMoneda(calculo.costoPorCabeza)} por persona que paga`,
+      detalle: `${formatearMoneda(calculo.costoPorCabeza)} por persona (redondeado ↑)`,
     }),
   ];
 
   if (calculo.kgPollo > 0) {
     cards.splice(
-      3,
+      5,
       0,
       crearCard({
         emoji: '🍗',
@@ -266,16 +303,22 @@ function renderizarResultados(calculo) {
     );
   }
 
-  elementos.resultadoCards.innerHTML = cards.join('');
+  elementos.resultadoCards.replaceChildren(...cards);
 }
 
 function renderizarComensales(calculo) {
-  elementos.resumenComensales.innerHTML = `
-    <strong>${FORMATO_AR.format(calculo.totalPersonas)} personas comen</strong><br />
-    ${FORMATO_AR.format(calculo.pagadores)} pagan ·
-    ${FORMATO_AR.format(calculo.gratis)} invitados sin pago ·
-    modo ${MODOS_COMPRA[calculo.modo].etiqueta.toLowerCase()}
-  `;
+  const fuerte = crearNodo(
+    'strong',
+    '',
+    `${FORMATO_AR.format(calculo.totalPersonas)} personas comen`
+  );
+  const detalle = document.createTextNode(
+    `${FORMATO_AR.format(calculo.pagadores)} pagan · ${FORMATO_AR.format(
+      calculo.gratis
+    )} invitados sin pago · modo ${MODOS_COMPRA[calculo.modo].etiqueta.toLowerCase()}`
+  );
+
+  elementos.resumenComensales.replaceChildren(fuerte, document.createElement('br'), detalle);
 
   const cantidadEmojis = Math.min(calculo.pagadores, 24);
   elementos.emojisPersonas.textContent =
@@ -284,7 +327,13 @@ function renderizarComensales(calculo) {
 }
 
 function renderizarIndicadores(calculo) {
-  if (calculo.kgCarneTotal > 10) {
+  if (calculo.totalPersonas === 0) {
+    elementos.indicadorContextual.textContent = '⚠️ Nadie está invitado al asado.';
+    elementos.indicadorContextual.hidden = false;
+  } else if (calculo.pagadores === 0) {
+    elementos.indicadorContextual.textContent = '⚠️ Nadie está pagando el asado.';
+    elementos.indicadorContextual.hidden = false;
+  } else if (calculo.kgCarneTotal > 10) {
     elementos.indicadorContextual.textContent = '¡Esto es un asado bailable! 🎉';
     elementos.indicadorContextual.hidden = false;
   } else if (calculo.totalPersonas > 8 && calculo.kgCarneTotal < 3) {
@@ -320,39 +369,114 @@ function actualizarTodo() {
 }
 
 function sincronizarSlider() {
-  const pagadores = enteroPositivoDesdeInput(elementos.personasPagas);
+  const pagadores = leerEnteroInput(elementos.personasPagas);
   elementos.sliderPersonas.value = Math.min(Number(elementos.sliderPersonas.max), pagadores);
+}
+
+function guardarEstadoFormulario() {
+  if (restaurandoEstado) return;
+
+  const estado = {
+    ...obtenerEstado(),
+    precioCarne: elementos.precioCarne.value,
+    precioCarbon: elementos.precioCarbon.value,
+    extras: elementos.extras.value,
+  };
+  window.localStorage.setItem(STORAGE_ESTADO, JSON.stringify(estado));
+}
+
+function aplicarEstadoFormulario(estado) {
+  restaurandoEstado = true;
+  elementos.personasPagas.value = String(parsearEnteroPositivo(estado.pagadores));
+  elementos.invitadosGratis.value = String(parsearEnteroPositivo(estado.gratis));
+  elementos.temperatura.value = String(estado.temperatura ?? ESTADO_INICIAL.temperatura);
+  elementos.viento.value = String(estado.viento ?? ESTADO_INICIAL.viento);
+  elementos.precioCarne.value = estado.precioCarne === 0 ? '' : String(estado.precioCarne ?? '');
+  elementos.precioCarbon.value = estado.precioCarbon === 0 ? '' : String(estado.precioCarbon ?? '');
+  elementos.extras.value = estado.extras === 0 ? '' : String(estado.extras ?? '');
+
+  marcarRadio('modoCompra', estado.modo || ESTADO_INICIAL.modo);
+  marcarRadio('entorno', estado.entorno || ESTADO_INICIAL.entorno);
+  restaurandoEstado = false;
+  actualizarTodo();
+}
+
+function marcarRadio(nombre, valor) {
+  const radio = $(`input[name="${nombre}"][value="${valor}"]`);
+  if (radio) radio.checked = true;
+}
+
+function restaurarEstadoFormulario() {
+  try {
+    const guardado = JSON.parse(window.localStorage.getItem(STORAGE_ESTADO) || 'null');
+    aplicarEstadoFormulario(guardado || ESTADO_INICIAL);
+  } catch {
+    window.localStorage.removeItem(STORAGE_ESTADO);
+    aplicarEstadoFormulario(ESTADO_INICIAL);
+  }
+}
+
+function normalizarCampoEntero(input) {
+  input.value = String(leerEnteroInput(input));
+}
+
+function normalizarCampoPrecio(input) {
+  const valor = leerEnteroInput(input);
+  input.value = valor > 0 ? String(valor) : '';
+  input.dataset.formateado = valor > 0 ? valor.toLocaleString('es-AR') : '';
+  input.title = input.dataset.formateado ? `$${input.dataset.formateado}` : 'Precio sin cargar';
+}
+
+function bloquearDecimalPrecio(evento) {
+  if (['.', ',', '-', '+', 'e', 'E'].includes(evento.key)) {
+    evento.preventDefault();
+  }
+}
+
+function bloquearPegadoNoEntero(evento) {
+  const texto = evento.clipboardData?.getData('text') ?? '';
+  if (!/^\d+$/.test(texto)) {
+    evento.preventDefault();
+  }
 }
 
 function prepararInputs() {
   [elementos.personasPagas, elementos.invitadosGratis].forEach((input) => {
     input.addEventListener('input', debounceRender);
     input.addEventListener('blur', () => {
-      if (input.value === '') input.value = '0';
+      normalizarCampoEntero(input);
       actualizarTodo();
+      guardarEstadoFormulario();
     });
   });
 
   [elementos.precioCarne, elementos.precioCarbon, elementos.extras].forEach((input) => {
+    input.addEventListener('keydown', bloquearDecimalPrecio);
+    input.addEventListener('paste', bloquearPegadoNoEntero);
     input.addEventListener('input', debounceRender);
     input.addEventListener('blur', () => {
-      const valor = enteroPositivoDesdeInput(input, true);
-      input.value = PESOS_AR.format(valor);
+      normalizarCampoPrecio(input);
       actualizarTodo();
+      guardarEstadoFormulario();
     });
   });
 
   [elementos.temperatura, elementos.viento].forEach((input) => {
     input.addEventListener('input', debounceRender);
+    input.addEventListener('blur', guardarEstadoFormulario);
   });
 
   elementos.sliderPersonas.addEventListener('input', () => {
     elementos.personasPagas.value = elementos.sliderPersonas.value;
     debounceRender();
   });
+  elementos.sliderPersonas.addEventListener('change', guardarEstadoFormulario);
 
   $$('input[name="modoCompra"], input[name="entorno"]').forEach((input) => {
-    input.addEventListener('change', actualizarTodo);
+    input.addEventListener('change', () => {
+      actualizarTodo();
+      guardarEstadoFormulario();
+    });
   });
 }
 
@@ -362,9 +486,7 @@ function guardarAsado() {
   const historial = leerHistorial();
   historial.unshift({
     fecha: new Date().toISOString(),
-    personas: calculoActual.totalPersonas,
-    total: calculoActual.totalEstimado,
-    porCabeza: calculoActual.costoPorCabeza,
+    calculo: { ...calculoActual },
   });
   window.localStorage.setItem(STORAGE_HISTORIAL, JSON.stringify(historial.slice(0, 10)));
   renderizarHistorial();
@@ -381,33 +503,79 @@ function leerHistorial() {
 
 function renderizarHistorial() {
   const historial = leerHistorial();
+  elementos.historialAsados.replaceChildren();
+
   if (historial.length === 0) {
-    elementos.historialAsados.innerHTML = '<p class="ayuda">Todavía no hay asados guardados.</p>';
+    elementos.historialAsados.append(crearNodo('p', 'ayuda', 'Todavía no hay asados guardados.'));
     return;
   }
 
-  elementos.historialAsados.innerHTML = historial
-    .map((item) => {
-      const fecha = new Intl.DateTimeFormat('es-AR', {
-        day: '2-digit',
-        month: 'short',
-        hour: '2-digit',
-        minute: '2-digit',
-      }).format(new Date(item.fecha));
-      return `
-        <div class="historial-item">
-          <strong>${fecha} · ${FORMATO_AR.format(item.personas)} personas</strong>
-          <span>Total ${formatearMoneda(item.total)} · Por cabeza ${formatearMoneda(item.porCabeza)}</span>
-        </div>
-      `;
-    })
-    .join('');
+  const borrar = crearNodo('button', 'btn-borrar-historial', 'Borrar historial');
+  borrar.type = 'button';
+  borrar.addEventListener('click', borrarHistorial);
+
+  const lista = crearNodo('div', 'historial-lista');
+  historial.forEach((item) => lista.append(crearItemHistorial(item)));
+  elementos.historialAsados.append(borrar, lista);
+}
+
+function crearItemHistorial(item) {
+  const calculo = item.calculo || item;
+  const fecha = new Intl.DateTimeFormat('es-AR', {
+    day: '2-digit',
+    month: 'short',
+    hour: '2-digit',
+    minute: '2-digit',
+  }).format(new Date(item.fecha));
+  const contenedor = crearNodo('div', 'historial-item');
+  const titulo = crearNodo(
+    'strong',
+    '',
+    `${fecha} · ${FORMATO_AR.format(calculo.totalPersonas || item.personas || 0)} personas`
+  );
+  const detalle = crearNodo(
+    'span',
+    '',
+    `Total ${formatearMoneda(calculo.totalEstimado || item.total || 0)} · Por cabeza ${formatearMoneda(
+      calculo.costoPorCabeza || item.porCabeza || 0
+    )}`
+  );
+  const acciones = crearNodo('div', 'historial-acciones');
+  const cargar = crearNodo('button', 'btn-cargar', 'Cargar');
+  cargar.type = 'button';
+  cargar.addEventListener('click', () => cargarAsadoHistorial(calculo));
+  acciones.append(cargar);
+  contenedor.append(titulo, detalle, acciones);
+  return contenedor;
+}
+
+function cargarAsadoHistorial(calculo) {
+  aplicarEstadoFormulario({
+    pagadores: calculo.pagadores ?? calculo.totalPersonas ?? calculo.personas ?? ESTADO_INICIAL.pagadores,
+    gratis: calculo.gratis ?? 0,
+    modo: calculo.modo,
+    entorno: calculo.entorno,
+    temperatura: calculo.temperatura,
+    viento: calculo.viento,
+    precioCarne: calculo.precioCarne || '',
+    precioCarbon: calculo.precioCarbon || '',
+    extras: calculo.extras || '',
+  });
+  guardarEstadoFormulario();
+}
+
+function borrarHistorial() {
+  if (!window.confirm('¿Borrar todo el historial de asados?')) return;
+  window.localStorage.removeItem(STORAGE_HISTORIAL);
+  renderizarHistorial();
 }
 
 function textoResumen(calculo) {
   return [
     'Asado Pro Río Gallegos',
-    `Personas: ${FORMATO_AR.format(calculo.totalPersonas)} (${FORMATO_AR.format(calculo.pagadores)} pagan, ${FORMATO_AR.format(calculo.gratis)} sin pago)`,
+    `Personas: ${FORMATO_AR.format(calculo.totalPersonas)} (${FORMATO_AR.format(
+      calculo.pagadores
+    )} pagan, ${FORMATO_AR.format(calculo.gratis)} sin pago)`,
     `Modo: ${MODOS_COMPRA[calculo.modo].etiqueta}`,
     `Carne total: ${formatearKg(calculo.kgCarneTotal)} (${calculo.porciones} porciones)`,
     `Vacío: ${formatearKg(calculo.kgVacio)}`,
@@ -418,7 +586,7 @@ function textoResumen(calculo) {
     `Carbón: ${formatearKg(calculo.carbonKg)} (${FORMATO_AR.format(calculo.bolsasCarbon)} bolsas)`,
     `Leña: ${formatearKg(calculo.lenaKg)}`,
     `Costo total: ${formatearMoneda(calculo.totalEstimado)}`,
-    `Por cabeza: ${formatearMoneda(calculo.costoPorCabeza)}`,
+    `Por cabeza: ${formatearMoneda(calculo.costoPorCabeza)} (redondeado ↑)`,
   ]
     .filter(Boolean)
     .join('\n');
@@ -441,7 +609,17 @@ function abrirListaCompras() {
 }
 
 async function copiarLista() {
-  await navigator.clipboard.writeText(elementos.contenidoLista.textContent);
+  const textoOriginal = elementos.copiarLista.textContent;
+  try {
+    await navigator.clipboard.writeText(elementos.contenidoLista.textContent);
+    elementos.copiarLista.textContent = '¡Copiado! ✅';
+  } catch {
+    elementos.copiarLista.textContent = 'No se pudo copiar';
+  } finally {
+    window.setTimeout(() => {
+      elementos.copiarLista.textContent = textoOriginal;
+    }, 2000);
+  }
 }
 
 function cerrarLista() {
@@ -456,13 +634,14 @@ function puntuarVentana(slot) {
   let score = 100;
   score -= Math.max(0, slot.viento - 15) * 1.4;
   score -= Math.max(0, 8 - slot.temperatura) * 2;
+  score -= Math.max(0, slot.temperatura - 22) * 1.5;
   return Math.max(0, Math.round(score));
 }
 
 // Consulta Open-Meteo y muestra las 3 mejores ventanas próximas para encender el fuego.
 async function cargarPronostico() {
   elementos.resumenPronostico.textContent = 'Consultando Open-Meteo...';
-  elementos.tablaPronostico.innerHTML = '';
+  elementos.tablaPronostico.replaceChildren();
 
   try {
     const url =
@@ -471,6 +650,7 @@ async function cargarPronostico() {
     if (!respuesta.ok) throw new Error('Sin respuesta de Open-Meteo');
 
     const datos = await respuesta.json();
+    const ahora = new Date();
     const ventanas = datos.hourly.time
       .map((hora, indice) => ({
         hora,
@@ -478,8 +658,9 @@ async function cargarPronostico() {
         viento: Math.round(datos.hourly.wind_speed_10m[indice]),
       }))
       .filter((slot) => {
-        const hora = new Date(slot.hora).getHours();
-        return hora >= 11 && hora <= 23 && new Date(slot.hora) > new Date();
+        const fecha = new Date(slot.hora);
+        const hora = fecha.getHours();
+        return hora >= 11 && hora <= 23 && fecha > ahora;
       })
       .map((slot) => ({ ...slot, score: puntuarVentana(slot) }))
       .sort((a, b) => b.score - a.score)
@@ -490,7 +671,7 @@ async function cargarPronostico() {
     elementos.resumenPronostico.textContent = `Mejor horario sugerido: ${formatearHora(
       ventanas[0].hora
     )}.`;
-    elementos.tablaPronostico.innerHTML = ventanas.map(renderizarVentana).join('');
+    ventanas.forEach((ventana) => elementos.tablaPronostico.append(renderizarVentana(ventana)));
   } catch {
     elementos.resumenPronostico.textContent =
       'Sin conexión con Open-Meteo. Usá la temperatura y el viento manuales.';
@@ -498,15 +679,19 @@ async function cargarPronostico() {
 }
 
 function renderizarVentana(slot) {
-  return `
-    <article class="fila-pronostico">
-      <div>
-        <strong>${formatearHora(slot.hora)}</strong>
-        <span>${FORMATO_AR.format(slot.temperatura)} °C · viento ${FORMATO_AR.format(slot.viento)} km/h</span>
-      </div>
-      <span class="badge">${FORMATO_AR.format(slot.score)} pts</span>
-    </article>
-  `;
+  const fila = crearNodo('article', 'fila-pronostico');
+  const contenido = crearNodo('div');
+  const hora = crearNodo('strong', '', formatearHora(slot.hora));
+  const detalle = crearNodo(
+    'span',
+    '',
+    `${FORMATO_AR.format(slot.temperatura)} °C · viento ${FORMATO_AR.format(slot.viento)} km/h`
+  );
+  const badge = crearNodo('span', 'badge', `${FORMATO_AR.format(slot.score)} pts`);
+
+  contenido.append(hora, detalle);
+  fila.append(contenido, badge);
+  return fila;
 }
 
 function formatearHora(fechaIso) {
@@ -515,6 +700,11 @@ function formatearHora(fechaIso) {
     hour: '2-digit',
     minute: '2-digit',
   }).format(new Date(fechaIso));
+}
+
+function resetearFormulario() {
+  window.localStorage.removeItem(STORAGE_ESTADO);
+  aplicarEstadoFormulario(ESTADO_INICIAL);
 }
 
 function registrarServiceWorker() {
@@ -537,6 +727,7 @@ function configurarEventos() {
   elementos.guardarAsado.addEventListener('click', guardarAsado);
   elementos.compartirWhatsapp.addEventListener('click', compartirPorWhatsapp);
   elementos.generarLista.addEventListener('click', abrirListaCompras);
+  elementos.btnReset.addEventListener('click', resetearFormulario);
   elementos.cerrarLista.addEventListener('click', cerrarLista);
   elementos.imprimirLista.addEventListener('click', () => window.print());
   elementos.copiarLista.addEventListener('click', copiarLista);
@@ -550,15 +741,7 @@ function configurarEventos() {
   });
 }
 
-function formatearPreciosIniciales() {
-  [elementos.precioCarne, elementos.precioCarbon, elementos.extras].forEach((input) => {
-    input.value = PESOS_AR.format(enteroPositivoDesdeInput(input, true));
-  });
-}
-
 configurarEventos();
-formatearPreciosIniciales();
-actualizarTodo();
+restaurarEstadoFormulario();
 renderizarHistorial();
-cargarPronostico();
 registrarServiceWorker();

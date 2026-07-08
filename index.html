@@ -4,6 +4,8 @@
   - Reemplacé la entrada React/Vite por una app vanilla HTML/CSS/JS.
   - Agregué controles accesibles, resultados en tiempo real, historial, WhatsApp,
     lista imprimible, pronóstico y registro de service worker offline.
+  - Corregí inputs de precio, meta tags sociales, reset de formulario y carga manual
+    del pronóstico.
 -->
 <html lang="es">
   <head>
@@ -14,6 +16,14 @@
       name="description"
       content="Calculadora de asado argentino con clima, presupuesto, historial y lista de compras."
     />
+    <meta property="og:title" content="Asado Pro Río Gallegos" />
+    <meta
+      property="og:description"
+      content="Calculadora de asado argentino con clima, presupuesto, historial y lista de compras."
+    />
+    <meta property="og:type" content="website" />
+    <meta property="og:url" content="https://nitsugaone.github.io/calculadora-asado/" />
+    <meta name="twitter:card" content="summary" />
     <meta name="theme-color" content="#ea580c" />
     <meta name="apple-mobile-web-app-capable" content="yes" />
     <meta name="apple-mobile-web-app-title" content="Asado Pro" />
@@ -77,7 +87,6 @@
                 max="40"
                 step="1"
                 value="12"
-                aria-label="Ajustar cantidad de personas que pagan"
               />
               <div id="emojisPersonas" class="emojis-personas" aria-hidden="true"></div>
               <p id="textoPersonas" class="sr-only" aria-live="polite"></p>
@@ -181,11 +190,11 @@
                   <span class="prefijo">$</span>
                   <input
                     id="precioCarne"
-                    type="text"
+                    type="number"
                     inputmode="numeric"
-                    pattern="[0-9.]*"
+                    min="0"
+                    step="1"
                     autocomplete="off"
-                    value="10.000"
                     placeholder="0"
                     aria-label="Precio de carne por kilo"
                   />
@@ -199,11 +208,11 @@
                   <span class="prefijo">$</span>
                   <input
                     id="precioCarbon"
-                    type="text"
+                    type="number"
                     inputmode="numeric"
-                    pattern="[0-9.]*"
+                    min="0"
+                    step="1"
                     autocomplete="off"
-                    value="2.200"
                     placeholder="0"
                     aria-label="Precio de cada bolsa de carbón"
                   />
@@ -217,17 +226,21 @@
                 <span class="prefijo">$</span>
                 <input
                   id="extras"
-                  type="text"
+                  type="number"
                   inputmode="numeric"
-                  pattern="[0-9.]*"
+                  min="0"
+                  step="1"
                   autocomplete="off"
-                  value="15.000"
                   placeholder="0"
                   aria-label="Gastos extra"
                 />
               </div>
             </div>
           </fieldset>
+
+          <button type="button" id="btnReset" class="boton boton--ghost boton--reset">
+            ↺ Volver a valores por defecto
+          </button>
         </form>
 
         <section class="panel-secundario" aria-labelledby="titulo-pronostico">
@@ -237,7 +250,9 @@
               Actualizar
             </button>
           </div>
-          <p id="resumenPronostico" class="ayuda">Buscando ventanas horarias de Open-Meteo...</p>
+          <p id="resumenPronostico" class="ayuda">
+            Tocá Actualizar para consultar Open-Meteo cuando tengas señal.
+          </p>
           <div id="tablaPronostico" class="tabla-pronostico" aria-live="polite"></div>
         </section>
       </section>
