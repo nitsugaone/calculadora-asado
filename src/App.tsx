@@ -553,7 +553,7 @@ Comensales: ${totalPeople} (${demographics.hombres}H / ${demographics.mujeres}M 
 Invitados sin pago: ${nonPayingPeople}
 Personas que pagan: ${payingPeople}
 Corte: ${getCutTypeLabel(cutType)}
-Gramos base: ${results.gramsByProfile.hombres}g hombre / ${results.gramsByProfile.mujeres}g mujer / ${results.gramsByProfile.ninos}g niño
+Gramos base carne cruda: ${results.gramsByProfile.hombres}g hombre / ${results.gramsByProfile.mujeres}g mujer / ${results.gramsByProfile.ninos}g niño
 Clima: ${temp}°C, viento ${wind} km/h
 ${forecastLine}
 Factor térmico: ${results.factorFuego}x
@@ -594,11 +594,12 @@ ${shareBudgetLine}`;
           onChange={(value) => setCutType(value as CutType)}
         />
         <p className="mt-3 text-xs font-semibold leading-relaxed text-stone-400">
-          El tipo de carne cambia los gramos base y el desglose en tiempo real. Para cortes puntuales,
+          El tipo de carne cambia el desglose en tiempo real. Los gramos base son de carne cruda.
+          Para cortes puntuales,
           agregalos en Lista editable con categoría Carnes.
         </p>
         <div className="mt-4 rounded-xl border border-white/15 bg-[#242424] p-4 text-xs leading-relaxed text-stone-300">
-          <span className="font-black text-stone-100">Gramos base:</span>{' '}
+          <span className="font-black text-stone-100">Gramos base carne cruda:</span>{' '}
           {results.gramsByProfile.hombres}g hombre · {results.gramsByProfile.mujeres}g mujer ·{' '}
           {results.gramsByProfile.ninos}g niño
         </div>

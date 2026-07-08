@@ -36,23 +36,25 @@ export const CUT_TYPE_OPTIONS: Array<[CutType, string]> = [
   ['mixto_pollo', 'Vacuno + pollo'],
 ];
 
+const RAW_MEAT_GRAMS_BY_PROFILE = { hombres: 750, mujeres: 500, ninos: 250 };
+
 const CUT_TYPE_CONFIG: Record<CutType, CutTypeConfig> = {
   sin_hueso: {
     label: 'Vacuno sin hueso',
     shortLabel: 'Sin hueso',
-    grams: { hombres: 400, mujeres: 300, ninos: 185 },
+    grams: RAW_MEAT_GRAMS_BY_PROFILE,
     mix: [{ part: 'vacio', label: 'Vacío / cortes sin hueso', share: 1 }],
   },
   con_hueso: {
     label: 'Vacuno con hueso',
     shortLabel: 'Con hueso',
-    grams: { hombres: 550, mujeres: 400, ninos: 250 },
+    grams: RAW_MEAT_GRAMS_BY_PROFILE,
     mix: [{ part: 'tira', label: 'Tira / cortes con hueso', share: 1 }],
   },
   premium: {
     label: 'Premium mix',
     shortLabel: 'Premium mix',
-    grams: { hombres: 480, mujeres: 360, ninos: 220 },
+    grams: RAW_MEAT_GRAMS_BY_PROFILE,
     mix: [
       { part: 'vacio', label: 'Vacío', share: 0.5 },
       { part: 'tira', label: 'Tira', share: 0.5 },
@@ -61,19 +63,19 @@ const CUT_TYPE_CONFIG: Record<CutType, CutTypeConfig> = {
   cerdo: {
     label: 'Cerdo',
     shortLabel: 'Cerdo',
-    grams: { hombres: 450, mujeres: 330, ninos: 220 },
+    grams: RAW_MEAT_GRAMS_BY_PROFILE,
     mix: [{ part: 'cerdo', label: 'Cerdo', share: 1 }],
   },
   pollo: {
     label: 'Pollo',
     shortLabel: 'Pollo',
-    grams: { hombres: 600, mujeres: 450, ninos: 300 },
+    grams: RAW_MEAT_GRAMS_BY_PROFILE,
     mix: [{ part: 'pollo', label: 'Pollo con hueso', share: 1 }],
   },
   mixto_cerdo: {
     label: 'Mixto vacuno/cerdo',
     shortLabel: 'Vacuno + cerdo',
-    grams: { hombres: 500, mujeres: 370, ninos: 230 },
+    grams: RAW_MEAT_GRAMS_BY_PROFILE,
     mix: [
       { part: 'vacio', label: 'Vacuno sin hueso', share: 0.45 },
       { part: 'tira', label: 'Vacuno con hueso', share: 0.25 },
@@ -83,7 +85,7 @@ const CUT_TYPE_CONFIG: Record<CutType, CutTypeConfig> = {
   mixto_pollo: {
     label: 'Mixto vacuno/pollo',
     shortLabel: 'Vacuno + pollo',
-    grams: { hombres: 550, mujeres: 400, ninos: 260 },
+    grams: RAW_MEAT_GRAMS_BY_PROFILE,
     mix: [
       { part: 'vacio', label: 'Vacuno sin hueso', share: 0.25 },
       { part: 'tira', label: 'Vacuno con hueso', share: 0.35 },
