@@ -160,61 +160,6 @@ export default function App() {
   }, [totalPeople]);
 
   useEffect(() => {
-    // Superficial deterrence only: this is not real security and can be bypassed.
-    const devToolsThreshold = 180;
-    let redirected = false;
-
-    const redirectAway = () => {
-      if (redirected) return;
-      redirected = true;
-
-      if (window.history.length > 1) {
-        window.history.back();
-        return;
-      }
-
-      window.location.assign('/');
-    };
-
-    const handleContextMenu = (event: MouseEvent) => {
-      event.preventDefault();
-    };
-
-    const handleKeyDown = (event: KeyboardEvent) => {
-      const key = event.key.toLowerCase();
-      const blockedDevToolsShortcut =
-        event.key === 'F12' ||
-        (event.ctrlKey && event.shiftKey && ['i', 'j', 'c'].includes(key)) ||
-        (event.ctrlKey && !event.shiftKey && key === 'u');
-
-      if (!blockedDevToolsShortcut) return;
-
-      event.preventDefault();
-      event.stopPropagation();
-    };
-
-    const detectOpenDevTools = () => {
-      const widthGap = Math.abs(window.outerWidth - window.innerWidth);
-      const heightGap = Math.abs(window.outerHeight - window.innerHeight);
-
-      if (widthGap > devToolsThreshold || heightGap > devToolsThreshold) {
-        redirectAway();
-      }
-    };
-
-    window.addEventListener('contextmenu', handleContextMenu);
-    window.addEventListener('keydown', handleKeyDown, true);
-    const detector = window.setInterval(detectOpenDevTools, 1000);
-    detectOpenDevTools();
-
-    return () => {
-      window.removeEventListener('contextmenu', handleContextMenu);
-      window.removeEventListener('keydown', handleKeyDown, true);
-      window.clearInterval(detector);
-    };
-  }, []);
-
-  useEffect(() => {
     const handleOnline = () => setOnlineStatus(true);
     const handleOffline = () => setOnlineStatus(false);
     const handleInstallPrompt = (event: any) => {
