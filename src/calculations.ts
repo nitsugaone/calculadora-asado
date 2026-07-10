@@ -16,6 +16,9 @@ type MeatPart = 'vacio' | 'tira' | 'cerdo' | 'pollo';
 interface CutTypeConfig {
   label: string;
   shortLabel: string;
+  /** Fracción comestible del peso bruto (0-1). El hueso y la merma no se comen. */
+  rendimiento: number;
+  /** Gramos BRUTOS de compra por perfil, calibrados para entregar ~520-560 g netos por hombre. */
   grams: {
     hombres: number;
     mujeres: number;
@@ -39,25 +42,33 @@ export const CUT_TYPE_OPTIONS: Array<[CutType, string]> = [
   ['mixto_pollo', 'Vacuno + pollo'],
 ];
 
-const RAW_MEAT_GRAMS_BY_PROFILE = { hombres: 750, mujeres: 500, ninos: 250 };
-
+/**
+ * Gramos brutos por perfil, diferenciados por corte.
+ * Antes eran 750/500/250 para todos los cortes, lo que generaba una inconsistencia
+ * grande: 750 g de tira (60% de rendimiento) entregan ~450 g netos al plato,
+ * mientras que 750 g de vacío (93%) entregan ~700 g. Ahora cada corte compra
+ * lo necesario para que lleguen ~520-560 g netos por hombre adulto.
+ */
 const CUT_TYPE_CONFIG: Record<CutType, CutTypeConfig> = {
   sin_hueso: {
     label: 'Vacuno sin hueso',
     shortLabel: 'Sin hueso',
-    grams: RAW_MEAT_GRAMS_BY_PROFILE,
+    rendimiento: 0.93,
+    grams: { hombres: 600, mujeres: 400, ninos: 200 },
     mix: [{ part: 'vacio', label: 'Vacío / cortes sin hueso', share: 1 }],
   },
   con_hueso: {
     label: 'Vacuno con hueso',
     shortLabel: 'Con hueso',
-    grams: RAW_MEAT_GRAMS_BY_PROFILE,
+    rendimiento: 0.6,
+    grams: { hombres: 880, mujeres: 590, ninos: 300 },
     mix: [{ part: 'tira', label: 'Tira / cortes con hueso', share: 1 }],
   },
   premium: {
     label: 'Premium mix',
     shortLabel: 'Premium mix',
-    grams: RAW_MEAT_GRAMS_BY_PROFILE,
+    rendimiento: 0.765,
+    grams: { hombres: 720, mujeres: 490, ninos: 250 },
     mix: [
       { part: 'vacio', label: 'Vacío', share: 0.5 },
       { part: 'tira', label: 'Tira', share: 0.5 },
@@ -66,25 +77,29 @@ const CUT_TYPE_CONFIG: Record<CutType, CutTypeConfig> = {
   cordero: {
     label: 'Cordero patagónico',
     shortLabel: 'Cordero',
-    grams: RAW_MEAT_GRAMS_BY_PROFILE,
+    rendimiento: 0.55,
+    grams: { hombres: 950, mujeres: 650, ninos: 330 },
     mix: [],
   },
   cerdo: {
     label: 'Cerdo',
     shortLabel: 'Cerdo',
-    grams: RAW_MEAT_GRAMS_BY_PROFILE,
+    rendimiento: 0.9,
+    grams: { hombres: 620, mujeres: 420, ninos: 210 },
     mix: [{ part: 'cerdo', label: 'Cerdo', share: 1 }],
   },
   pollo: {
     label: 'Pollo',
     shortLabel: 'Pollo',
-    grams: RAW_MEAT_GRAMS_BY_PROFILE,
+    rendimiento: 0.65,
+    grams: { hombres: 820, mujeres: 550, ninos: 280 },
     mix: [{ part: 'pollo', label: 'Pollo con hueso', share: 1 }],
   },
   mixto_cerdo: {
     label: 'Mixto vacuno/cerdo',
     shortLabel: 'Vacuno + cerdo',
-    grams: RAW_MEAT_GRAMS_BY_PROFILE,
+    rendimiento: 0.8385,
+    grams: { hombres: 660, mujeres: 450, ninos: 230 },
     mix: [
       { part: 'vacio', label: 'Vacuno sin hueso', share: 0.45 },
       { part: 'tira', label: 'Vacuno con hueso', share: 0.25 },
@@ -94,7 +109,8 @@ const CUT_TYPE_CONFIG: Record<CutType, CutTypeConfig> = {
   mixto_pollo: {
     label: 'Mixto vacuno/pollo',
     shortLabel: 'Vacuno + pollo',
-    grams: RAW_MEAT_GRAMS_BY_PROFILE,
+    rendimiento: 0.7025,
+    grams: { hombres: 760, mujeres: 520, ninos: 260 },
     mix: [
       { part: 'vacio', label: 'Vacuno sin hueso', share: 0.25 },
       { part: 'tira', label: 'Vacuno con hueso', share: 0.35 },
@@ -171,6 +187,11 @@ export function calculateAsado(
   const morciTotal = Math.ceil((hombres + mujeres) * 0.4 + ninos * 0.1);
   const achurasTotal = Math.round((hombres + mujeres) * 0.12 * 10) / 10;
 
+  const rendimiento = config.rendimiento;
+  const carneNetaTotal = totalCarne * rendimiento;
+  const netGramsPerPerson =
+    totalPeople > 0 ? Math.round((carneNetaTotal * 1000) / totalPeople) : 0;
+
   const baseCarbon = 4.0 + totalPeople * 0.32;
   const baseLena = 3.0 + totalPeople * 0.18;
   const factorFuego = calcularFactorFuego(temp, wind, scenario);
@@ -179,6 +200,9 @@ export function calculateAsado(
 
   return {
     carneTotal: Number(totalCarne.toFixed(1)),
+    carneNetaTotal: Number(carneNetaTotal.toFixed(1)),
+    rendimiento,
+    netGramsPerPerson,
     choriTotal,
     morciTotal,
     achurasTotal,

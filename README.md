@@ -17,13 +17,26 @@ Calculadora de asado para Río Gallegos y clima patagónico. Estima carne, chori
 - Enlace compartible con precios congelados.
 - PWA con manifest y service worker para uso offline.
 
-## Gramos base de carne
+## Gramos de compra y rendimiento por corte
 
-| Modo | Hombre | Mujer | Niño |
-| --- | ---: | ---: | ---: |
-| Todos los modos base | 750 g | 500 g | 250 g |
+Cada corte compra distinto peso bruto para que lleguen **~520-560 g netos por hombre adulto** al plato, descontando hueso y merma:
 
-Las cantidades son de carne cruda. El modo cordero redondea la compra a medias reses.
+| Modo | Rendimiento | Hombre | Mujer | Niño |
+| --- | ---: | ---: | ---: | ---: |
+| Vacuno sin hueso | 93% | 600 g | 400 g | 200 g |
+| Vacuno con hueso | 60% | 880 g | 590 g | 300 g |
+| Premium mix | 76% | 720 g | 490 g | 250 g |
+| Cordero patagónico | 55% | 950 g | 650 g | 330 g |
+| Cerdo | 90% | 620 g | 420 g | 210 g |
+| Pollo | 65% | 820 g | 550 g | 280 g |
+| Vacuno + cerdo | 84% | 660 g | 450 g | 230 g |
+| Vacuno + pollo | 70% | 760 g | 520 g | 260 g |
+
+Las cantidades son de carne cruda (peso de compra). La app muestra los gramos netos por persona en el resultado. El modo cordero redondea la compra a medias reses. La calibración global (`sobró / faltó`) ajusta todo proporcionalmente.
+
+## Deploy
+
+El sitio se publica automáticamente en GitHub Pages al pushear a `main`: el workflow compila con Vite (`GITHUB_PAGES=true`) y despliega `dist/`.
 
 ## Desarrollo
 

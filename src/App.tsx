@@ -1,4 +1,4 @@
-import { type ReactNode, useEffect, useMemo, useState } from 'react';
+import { type ReactNode, useEffect, useMemo, useRef, useState } from 'react';
 import {
   AlertTriangle,
   Check,
@@ -484,8 +484,8 @@ export default function App() {
     window.setTimeout(() => setNotice(null), 3500);
   };
 
-  const fetchForecast = async () => {
-    triggerHaptic(20);
+  const fetchForecast = async (options?: { silent?: boolean }) => {
+    if (!options?.silent) triggerHaptic(20);
     setWeather((previous) => ({ ...previous, loading: true, error: null }));
     setForecast((previous) => ({ ...previous, loading: true, error: null }));
 
@@ -552,7 +552,7 @@ export default function App() {
         bestSlot,
         error: null,
       });
-      showNotice('Pronóstico de parrilla actualizado.');
+      if (!options?.silent) showNotice('Pronóstico de parrilla actualizado.');
     } catch {
       setWeather((previous) => ({
         ...previous,
@@ -567,6 +567,16 @@ export default function App() {
       }));
     }
   };
+
+  // Auto-carga silenciosa del pronóstico al abrir la app (si hay conexión).
+  const forecastAutoloaded = useRef(false);
+  useEffect(() => {
+    if (forecastAutoloaded.current) return;
+    forecastAutoloaded.current = true;
+    if (typeof navigator !== 'undefined' && !navigator.onLine) return;
+    fetchForecast({ silent: true });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   const triggerInstall = async () => {
     if (!deferredPrompt) return;
@@ -679,30 +689,26 @@ export default function App() {
     const listText = allChecklist
       .map((item) => `- ${item.label}: ${item.amount}`)
       .join('\n');
-    const text = `ASADO PRO - RÍO GALLEGOS
-Comensales: ${totalPeople} (${demographics.hombres}H / ${demographics.mujeres}M / ${demographics.ninos}N)
-Invitados sin pago: ${nonPayingPeople}
-Personas que pagan: ${payingPeople}
-Corte: ${getCutTypeLabel(cutType)}
-Gramos base carne cruda: ${results.gramsByProfile.hombres}g hombre / ${results.gramsByProfile.mujeres}g mujer / ${results.gramsByProfile.ninos}g niño
-Clima: ${temp}°C, viento ${wind} km/h
-${forecastLine}
-Factor térmico: ${results.factorFuego}x
+    const text = `🔥 *ASADO PRO — RÍO GALLEGOS*
 
-Resumen:
-- Carne total: ${results.carneTotal} kg (${meatBreakdownText})
-- Chorizos: ${results.choriTotal} unidades
-- Morcillas: ${results.morciTotal} unidades
-- Achuras: ${results.achurasTotal} kg
-- Carbón: ${results.carbonTotal} kg (${results.bolsasCarbon} bolsas)
-- Leña: ${results.lenaTotal} kg (${results.bolsasLena} atados)
+👥 ${totalPeople} comensales (${demographics.hombres}H/${demographics.mujeres}M/${demographics.ninos}N)${nonPayingPeople > 0 ? ` · ${nonPayingPeople} sin pago` : ''}
+🌡️ ${temp}°C · 💨 ${wind} km/h · factor ${results.factorFuego}x
+⏰ ${forecastLine}
 
-Lista de compras:
+*COMPRAS*
+🥩 Carne: ${results.carneTotal} kg de compra (≈${results.netGramsPerPerson} g netos/pers) — ${meatBreakdownText}
+🌭 Chorizos: ${results.choriTotal} un
+🩸 Morcillas: ${results.morciTotal} un
+🍢 Achuras: ${results.achurasTotal} kg
+🔥 Carbón: ${results.carbonTotal} kg (${results.bolsasCarbon} bolsas de 4 kg)
+🪵 Leña: ${results.lenaTotal} kg (${results.bolsasLena} atados de 3 kg)
+
+*LISTA*
 ${listText}
 
-${shareBudgetLine}
-Precios congelados: carne $${currency.format(costs.meatPricePerKg)}/kg, carbón $${currency.format(costs.carbonPricePerBag)} por bolsa, extras $${currency.format(costs.extraExpenses)}.
-Enlace: ${shareUrl}`;
+💵 ${shareBudgetLine}
+Precios: carne $${currency.format(costs.meatPricePerKg)}/kg · carbón $${currency.format(costs.carbonPricePerBag)}/bolsa · extras $${currency.format(costs.extraExpenses)}
+🔗 ${shareUrl}`;
 
     guardarLog({
       id: `share-${Date.now()}`,
@@ -1061,7 +1067,7 @@ Enlace: ${shareUrl}`;
 
             {scenario !== 'quincho' && (
               <button
-                onClick={fetchForecast}
+                onClick={() => fetchForecast()}
                 disabled={weather.loading || forecast.loading}
                 className="inline-flex min-h-10 items-center gap-1.5 rounded-full border border-white/15 bg-white/5 px-3 py-1 text-xs font-bold text-stone-200 transition hover:border-[#ea580c]/60 hover:text-white disabled:opacity-60"
               >
@@ -1230,7 +1236,7 @@ Enlace: ${shareUrl}`;
                 )}
               </Panel>
 
-              <ForecastPanel forecast={forecast} onRefresh={fetchForecast} />
+              <ForecastPanel forecast={forecast} onRefresh={() => fetchForecast()} />
             </>
           )}
 
@@ -1248,9 +1254,12 @@ Enlace: ${shareUrl}`;
                 <div className="grid gap-4 sm:grid-cols-2">
                   <Metric
                     emoji="🥩"
-                    label="Carne"
+                    label="Carne (peso de compra)"
                     value={`${results.carneTotal} kg`}
-                    detail={results.corderoPlan?.descripcion ?? `${getCutTypeLabel(cutType)} · ≈ ${totalPeople} porciones`}
+                    detail={
+                      results.corderoPlan?.descripcion ??
+                      `${getCutTypeLabel(cutType)} · ≈ ${results.netGramsPerPerson} g netos/persona (rinde ${Math.round(results.rendimiento * 100)}%)`
+                    }
                     featured
                   />
                   <Metric
@@ -1278,14 +1287,14 @@ Enlace: ${shareUrl}`;
                     emoji="🔥"
                     label="Carbón"
                     value={`${results.carbonTotal} kg`}
-                    detail={`${results.bolsasCarbon} bolsas`}
+                    detail={`${results.bolsasCarbon} bolsas de 4 kg`}
                     featured
                   />
                   <Metric
                     emoji="🪵"
                     label="Leña"
                     value={`${results.lenaTotal} kg`}
-                    detail={`${results.bolsasLena} atados`}
+                    detail={`${results.bolsasLena} atados de 3 kg`}
                     featured
                   />
                 </div>

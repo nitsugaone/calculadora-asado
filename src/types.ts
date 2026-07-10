@@ -46,6 +46,12 @@ export interface ChecklistItem {
 
 export interface AsadoResult {
   carneTotal: number;
+  /** Kg comestibles reales (descontando hueso y merma). */
+  carneNetaTotal: number;
+  /** Fracción comestible del corte elegido (0-1). */
+  rendimiento: number;
+  /** Gramos netos que llegan al plato por persona. */
+  netGramsPerPerson: number;
   choriTotal: number;
   morciTotal: number;
   achurasTotal: number;

@@ -1,12 +1,4 @@
 <!doctype html>
-<!--
-  CHANGELOG
-  - Reemplacé la entrada React/Vite por una app vanilla HTML/CSS/JS.
-  - Agregué controles accesibles, resultados en tiempo real, historial, WhatsApp,
-    lista imprimible, pronóstico y registro de service worker offline.
-  - Corregí inputs de precio, meta tags sociales, reset de formulario y carga manual
-    del pronóstico.
--->
 <html lang="es">
   <head>
     <meta charset="UTF-8" />
@@ -14,294 +6,40 @@
     <title>Asado Pro - Río Gallegos</title>
     <meta
       name="description"
-      content="Calculadora de asado argentino con clima, presupuesto, historial y lista de compras."
+      content="Calculadora de asado patagónico: compras con rendimiento por corte, clima y viento en tiempo real, presupuesto e historial."
     />
     <meta property="og:title" content="Asado Pro Río Gallegos" />
     <meta
       property="og:description"
-      content="Calculadora de asado argentino con clima, presupuesto, historial y lista de compras."
+      content="Calculadora de asado patagónico: compras, clima, presupuesto e historial."
     />
     <meta property="og:type" content="website" />
     <meta property="og:url" content="https://nitsugaone.github.io/calculadora-asado/" />
     <meta name="twitter:card" content="summary" />
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link rel="manifest" href="./manifest.json" />
+    <link rel="icon" type="image/svg+xml" href="./icon.svg" />
     <meta name="theme-color" content="#ea580c" />
     <meta name="apple-mobile-web-app-capable" content="yes" />
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
     <meta name="apple-mobile-web-app-title" content="Asado Pro" />
-    <link rel="manifest" href="./public/manifest.json" />
-    <link rel="icon" type="image/svg+xml" href="./public/icon.svg" />
-    <link rel="stylesheet" href="./style.css" />
-    <script src="./script.js" defer></script>
+    <link rel="apple-touch-icon" href="./icon.svg" />
   </head>
-
-  <body>
-    <header class="cabecera">
-      <div class="cabecera__contenido">
-        <div>
-          <p class="volanta">Calculadora argentina</p>
-          <h1>Asado Pro Río Gallegos</h1>
-          <p class="subtitulo">Compras, fuego, clima, presupuesto e historial.</p>
-        </div>
-        <div class="estado-app" aria-live="polite">
-          <span class="estado-app__punto" aria-hidden="true"></span>
-          <span id="estadoConexion">Listo offline</span>
-        </div>
-      </div>
-    </header>
-
-    <main class="contenedor">
-      <section class="panel panel--controles" aria-labelledby="titulo-configuracion">
-        <div class="panel__titulo">
-          <span aria-hidden="true">⚙️</span>
-          <h2 id="titulo-configuracion">Configuración</h2>
-        </div>
-
-        <form id="formularioAsado" class="formulario" novalidate>
-          <fieldset class="bloque">
-            <legend>Comensales</legend>
-
-            <div class="campo">
-              <label for="personasPagas">Personas que pagan</label>
-              <div class="control-linea">
-                <input
-                  id="personasPagas"
-                  name="personasPagas"
-                  type="text"
-                  inputmode="numeric"
-                  pattern="[0-9]*"
-                  autocomplete="off"
-                  value="12"
-                  placeholder="0"
-                  aria-describedby="ayudaPagadores"
-                />
-                <span class="unidad">personas</span>
-              </div>
-              <p id="ayudaPagadores" class="ayuda">También comen. Además dividen el presupuesto.</p>
-            </div>
-
-            <div class="campo">
-              <label for="sliderPersonas">Ajuste visual de pagadores</label>
-              <input
-                id="sliderPersonas"
-                type="range"
-                min="0"
-                max="40"
-                step="1"
-                value="12"
-              />
-              <div id="emojisPersonas" class="emojis-personas" aria-hidden="true"></div>
-              <p id="textoPersonas" class="sr-only" aria-live="polite"></p>
-            </div>
-
-            <div class="campo">
-              <label for="invitadosGratis">Invitados sin pago</label>
-              <div class="control-linea">
-                <input
-                  id="invitadosGratis"
-                  name="invitadosGratis"
-                  type="text"
-                  inputmode="numeric"
-                  pattern="[0-9]*"
-                  autocomplete="off"
-                  value="0"
-                  placeholder="0"
-                  aria-describedby="ayudaGratis"
-                />
-                <span class="unidad">comen gratis</span>
-              </div>
-              <p id="ayudaGratis" class="ayuda">
-                Suman carne, carbón y leña, pero no dividen el costo.
-              </p>
-            </div>
-          </fieldset>
-
-          <fieldset class="bloque">
-            <legend>Modo de compra</legend>
-            <div class="switch-modo" role="radiogroup" aria-label="Elegir modo de compra">
-              <label>
-                <input type="radio" name="modoCompra" value="premium" checked />
-                <span>Premium</span>
-              </label>
-              <label>
-                <input type="radio" name="modoCompra" value="economico" />
-                <span>Económico</span>
-              </label>
-            </div>
-          </fieldset>
-
-          <fieldset class="bloque">
-            <legend>Fuego y clima</legend>
-            <div class="opciones-entorno" role="radiogroup" aria-label="Elegir entorno de cocción">
-              <label>
-                <input type="radio" name="entorno" value="quincho" />
-                <span>Quincho</span>
-              </label>
-              <label>
-                <input type="radio" name="entorno" value="chulengo" checked />
-                <span>Chulengo</span>
-              </label>
-              <label>
-                <input type="radio" name="entorno" value="intemperie" />
-                <span>Intemperie</span>
-              </label>
-            </div>
-
-            <div class="grid-doble">
-              <div class="campo">
-                <label for="temperatura">Temperatura</label>
-                <div class="control-linea">
-                  <input
-                    id="temperatura"
-                    type="number"
-                    min="-15"
-                    max="35"
-                    step="1"
-                    value="8"
-                    aria-label="Temperatura en grados Celsius"
-                  />
-                  <span class="unidad">°C</span>
-                </div>
-              </div>
-
-              <div class="campo">
-                <label for="viento">Viento</label>
-                <div class="control-linea">
-                  <input
-                    id="viento"
-                    type="number"
-                    min="0"
-                    max="120"
-                    step="1"
-                    value="25"
-                    aria-label="Viento en kilómetros por hora"
-                  />
-                  <span class="unidad">km/h</span>
-                </div>
-              </div>
-            </div>
-            <p id="mensajeClima" class="aviso" aria-live="polite"></p>
-          </fieldset>
-
-          <fieldset class="bloque">
-            <legend>Presupuesto</legend>
-            <div class="grid-doble">
-              <div class="campo">
-                <label for="precioCarne">Precio carne</label>
-                <div class="control-linea">
-                  <span class="prefijo">$</span>
-                  <input
-                    id="precioCarne"
-                    type="number"
-                    inputmode="numeric"
-                    min="0"
-                    step="1"
-                    autocomplete="off"
-                    placeholder="0"
-                    aria-label="Precio de carne por kilo"
-                  />
-                  <span class="unidad">kg</span>
-                </div>
-              </div>
-
-              <div class="campo">
-                <label for="precioCarbon">Bolsa de carbón</label>
-                <div class="control-linea">
-                  <span class="prefijo">$</span>
-                  <input
-                    id="precioCarbon"
-                    type="number"
-                    inputmode="numeric"
-                    min="0"
-                    step="1"
-                    autocomplete="off"
-                    placeholder="0"
-                    aria-label="Precio de cada bolsa de carbón"
-                  />
-                </div>
-              </div>
-            </div>
-
-            <div class="campo">
-              <label for="extras">Extras</label>
-              <div class="control-linea">
-                <span class="prefijo">$</span>
-                <input
-                  id="extras"
-                  type="number"
-                  inputmode="numeric"
-                  min="0"
-                  step="1"
-                  autocomplete="off"
-                  placeholder="0"
-                  aria-label="Gastos extra"
-                />
-              </div>
-            </div>
-          </fieldset>
-
-          <button type="button" id="btnReset" class="boton boton--ghost boton--reset">
-            ↺ Volver a valores por defecto
-          </button>
-        </form>
-
-        <section class="panel-secundario" aria-labelledby="titulo-pronostico">
-          <div class="panel-secundario__titulo">
-            <h3 id="titulo-pronostico">Pronóstico de parrilla</h3>
-            <button id="actualizarPronostico" type="button" class="boton boton--ghost">
-              Actualizar
-            </button>
-          </div>
-          <p id="resumenPronostico" class="ayuda">
-            Tocá Actualizar para consultar Open-Meteo cuando tengas señal.
-          </p>
-          <div id="tablaPronostico" class="tabla-pronostico" aria-live="polite"></div>
-        </section>
-      </section>
-
-      <section class="panel panel--resultados" aria-labelledby="titulo-resultados">
-        <div class="panel__titulo">
-          <span aria-hidden="true">🔥</span>
-          <h2 id="titulo-resultados">Resultado</h2>
-        </div>
-
-        <div id="resumenComensales" class="resumen-comensales" aria-live="polite"></div>
-        <div id="resultadoCards" class="resultado-grid" aria-live="polite"></div>
-        <p id="indicadorContextual" class="indicador" aria-live="polite"></p>
-
-        <div class="acciones">
-          <button id="guardarAsado" type="button" class="boton">
-            Guardar asado
-          </button>
-          <button id="compartirWhatsapp" type="button" class="boton boton--whatsapp">
-            Compartir por WhatsApp
-          </button>
-          <button id="generarLista" type="button" class="boton boton--ghost">
-            Generar lista de compras
-          </button>
-        </div>
-
-        <details class="historial">
-          <summary>Historial de asados</summary>
-          <div id="historialAsados" class="historial__contenido"></div>
-        </details>
-      </section>
-    </main>
-
-    <dialog id="modalLista" class="modal-lista" aria-labelledby="tituloLista">
-      <div class="modal-lista__barra">
-        <h2 id="tituloLista">Lista de compras</h2>
-        <button id="cerrarLista" type="button" class="boton-cerrar" aria-label="Cerrar lista">
-          ×
-        </button>
-      </div>
-      <pre id="contenidoLista" class="lista-limpia"></pre>
-      <div class="modal-lista__acciones">
-        <button id="imprimirLista" type="button" class="boton">Imprimir</button>
-        <button id="copiarLista" type="button" class="boton boton--ghost">Copiar</button>
-      </div>
-    </dialog>
-
-    <footer class="pie">
-      Asado Pro Río Gallegos · HTML, CSS y JavaScript vanilla · Funciona offline
-    </footer>
+  <body class="bg-[#1a1a1a] text-stone-100 antialiased">
+    <div id="root"></div>
+    <script type="module" src="/src/main.tsx"></script>
+    <script>
+      if ('serviceWorker' in navigator) {
+        window.addEventListener('load', () => {
+          navigator.serviceWorker
+            .register('./sw.js')
+            .then((registration) =>
+              console.log('[PWA] Service Worker registered:', registration.scope)
+            )
+            .catch((error) => console.error('[PWA] Service Worker registration failed:', error));
+        });
+      }
+    </script>
   </body>
 </html>
