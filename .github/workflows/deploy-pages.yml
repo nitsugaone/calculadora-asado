@@ -1,4 +1,4 @@
-name: Deploy static site to GitHub Pages
+name: Build and deploy to GitHub Pages
 
 on:
   push:
@@ -25,13 +25,35 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v6
 
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v4
+        with:
+          version: 9
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Type check
+        run: pnpm lint
+
+      - name: Build
+        run: pnpm build
+        env:
+          GITHUB_PAGES: 'true'
+
       - name: Configure Pages
         uses: actions/configure-pages@v5
 
-      - name: Upload static artifact
+      - name: Upload build artifact
         uses: actions/upload-pages-artifact@v4
         with:
-          path: .
+          path: dist
 
       - name: Deploy to GitHub Pages
         id: deployment
