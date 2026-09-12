@@ -30,21 +30,17 @@ jobs:
         with:
           node-version: 20.x
 
-      - name: Enable pnpm
-        run: |
-          corepack enable
-          corepack prepare pnpm@9.15.9 --activate
-          node --version
-          pnpm --version
+      - name: Check Node
+        run: node --version
 
       - name: Install dependencies
-        run: pnpm install --frozen-lockfile
+        run: npm install
 
       - name: Type check
-        run: pnpm lint
+        run: npm run lint
 
       - name: Build
-        run: pnpm build
+        run: npm run build
         env:
           GITHUB_PAGES: 'true'
 
