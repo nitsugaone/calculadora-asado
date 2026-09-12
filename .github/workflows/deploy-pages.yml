@@ -30,13 +30,10 @@ jobs:
         with:
           node-version: 20.x
 
-      - name: Setup pnpm
-        uses: pnpm/action-setup@v4
-        with:
-          version: 9
-
-      - name: Check toolchain
+      - name: Enable pnpm
         run: |
+          corepack enable
+          corepack prepare pnpm@9.15.9 --activate
           node --version
           pnpm --version
 
