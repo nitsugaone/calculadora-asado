@@ -1,45 +1,346 @@
 <!doctype html>
+<!--
+  CHANGELOG
+  - Agregué importación no destructiva del historial React y confirmación para enlaces antiguos.
+  - Agregué evaluación de carne en el historial y ajuste de compra opcional, sin aprendizaje automático.
+  - Agregué achuras optativas y confirmación antes de cargar un presupuesto compartido.
+  - Recuperé selección de carnes, cordero, bebidas y lista editable en los ajustes.
+  - Agregué perfiles de 750/500/250 g de carne cruda y resumen de personas sin perfil.
+  - Moví modo de compra, precios e historial a ajustes con acordeones desde la tuerca.
+  - Separé los bloques de clima y pronóstico para retirarlos del layout en Quincho.
+  - Conservé los controles, metadatos, lista imprimible y recursos de la PWA vanilla.
+-->
 <html lang="es">
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
     <title>Asado Pro - Río Gallegos</title>
-    <meta
-      name="description"
-      content="Calculadora de asado patagónico: compras con rendimiento por corte, clima y viento en tiempo real, presupuesto e historial."
-    />
+    <meta name="description" content="Calculadora de asado argentino con clima, presupuesto, historial y lista de compras." />
     <meta property="og:title" content="Asado Pro Río Gallegos" />
-    <meta
-      property="og:description"
-      content="Calculadora de asado patagónico: compras, clima, presupuesto e historial."
-    />
+    <meta property="og:description" content="Calculadora de asado argentino con clima, presupuesto, historial y lista de compras." />
     <meta property="og:type" content="website" />
     <meta property="og:url" content="https://nitsugaone.github.io/calculadora-asado/" />
     <meta name="twitter:card" content="summary" />
-    <link rel="preconnect" href="https://fonts.googleapis.com" />
-    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
-    <link rel="manifest" href="./manifest.json" />
-    <link rel="icon" type="image/svg+xml" href="./icon.svg" />
     <meta name="theme-color" content="#ea580c" />
     <meta name="apple-mobile-web-app-capable" content="yes" />
-    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
     <meta name="apple-mobile-web-app-title" content="Asado Pro" />
-    <link rel="apple-touch-icon" href="./icon.svg" />
+    <link rel="manifest" href="./manifest.json" />
+    <link rel="icon" type="image/svg+xml" href="./public/icon.svg" />
+    <link rel="stylesheet" href="./style.css" />
+    <script src="./script.js" defer></script>
   </head>
-  <body class="bg-[#1a1a1a] text-stone-100 antialiased">
-    <div id="root"></div>
-    <script type="module" src="/src/main.tsx"></script>
-    <script>
-      if ('serviceWorker' in navigator) {
-        window.addEventListener('load', () => {
-          navigator.serviceWorker
-            .register('./sw.js')
-            .then((registration) =>
-              console.log('[PWA] Service Worker registered:', registration.scope)
-            )
-            .catch((error) => console.error('[PWA] Service Worker registration failed:', error));
-        });
-      }
-    </script>
+
+  <body>
+    <header class="cabecera">
+      <div class="cabecera__contenido">
+        <div>
+          <p class="volanta">Calculadora argentina</p>
+          <h1>Asado Pro Río Gallegos</h1>
+          <p class="subtitulo">Compras, fuego y presupuesto.</p>
+        </div>
+        <div class="cabecera__acciones">
+          <div class="estado-app" aria-live="polite">
+            <span class="estado-app__punto" aria-hidden="true"></span>
+            <span id="estadoConexion">Preparando uso offline</span>
+            <button id="actualizarApp" type="button" class="boton boton--ghost" hidden>Actualizar app</button>
+          </div>
+          <button id="abrirAjustes" type="button" class="boton-icono" aria-label="Abrir ajustes e historial" aria-haspopup="dialog" aria-controls="modalAjustes" title="Ajustes e historial">
+            <span aria-hidden="true">⚙</span>
+          </button>
+        </div>
+      </div>
+    </header>
+
+    <main class="contenedor">
+      <section class="panel panel--controles" aria-labelledby="titulo-configuracion">
+        <div class="panel__titulo">
+          <h2 id="titulo-configuracion">Tu asado</h2>
+        </div>
+        <form id="formularioAsado" class="formulario" novalidate>
+          <fieldset class="bloque">
+            <legend>Comensales</legend>
+            <div class="campo">
+              <label for="personasPagas">Personas que pagan</label>
+              <div class="control-linea">
+                <input id="personasPagas" name="personasPagas" type="text" inputmode="numeric" pattern="[0-9]*" autocomplete="off" value="12" placeholder="0" aria-describedby="ayudaPagadores" />
+                <span class="unidad">personas</span>
+              </div>
+              <p id="ayudaPagadores" class="ayuda">También comen. Además dividen el presupuesto.</p>
+            </div>
+            <div class="campo">
+              <label for="sliderPersonas">Ajuste visual de pagadores</label>
+              <input id="sliderPersonas" type="range" min="0" max="40" step="1" value="12" />
+              <div id="emojisPersonas" class="emojis-personas" aria-hidden="true"></div>
+              <p id="textoPersonas" class="sr-only" aria-live="polite"></p>
+            </div>
+            <div class="campo">
+              <label for="invitadosGratis">Invitados sin pago</label>
+              <div class="control-linea">
+                <input id="invitadosGratis" name="invitadosGratis" type="text" inputmode="numeric" pattern="[0-9]*" autocomplete="off" value="0" placeholder="0" aria-describedby="ayudaGratis" />
+                <span class="unidad">comen gratis</span>
+              </div>
+              <p id="ayudaGratis" class="ayuda">Suman comida y combustible, pero no dividen el costo.</p>
+            </div>
+            <details class="perfiles">
+              <summary>Perfiles de comensales</summary>
+              <div class="grid-perfiles">
+                <div class="campo">
+                  <label for="hombres">Hombres <span class="gramaje">750 g</span></label>
+                  <div class="control-linea">
+                    <input id="hombres" type="number" inputmode="numeric" pattern="[0-9]*" min="0" step="1" value="0" aria-describedby="resumenPerfiles" />
+                  </div>
+                </div>
+                <div class="campo">
+                  <label for="mujeres">Mujeres <span class="gramaje">500 g</span></label>
+                  <div class="control-linea">
+                    <input id="mujeres" type="number" inputmode="numeric" pattern="[0-9]*" min="0" step="1" value="0" aria-describedby="resumenPerfiles" />
+                  </div>
+                </div>
+                <div class="campo">
+                  <label for="ninos">Niños <span class="gramaje">250 g</span></label>
+                  <div class="control-linea">
+                    <input id="ninos" type="number" inputmode="numeric" pattern="[0-9]*" min="0" step="1" value="0" aria-describedby="resumenPerfiles" />
+                  </div>
+                </div>
+              </div>
+            </details>
+            <p id="resumenPerfiles" class="ayuda resumen-perfiles" role="status"></p>
+          </fieldset>
+
+          <fieldset class="bloque">
+            <legend>Entorno</legend>
+            <div class="opciones-entorno" role="radiogroup" aria-label="Entorno de cocción">
+              <label><input type="radio" name="entorno" value="quincho" /><span>Quincho</span></label>
+              <label><input type="radio" name="entorno" value="chulengo" checked /><span>Chulengo</span></label>
+              <label><input type="radio" name="entorno" value="intemperie" /><span>Intemperie</span></label>
+            </div>
+            <div id="camposClima" class="grid-doble">
+              <div class="campo">
+                <label for="temperatura">Temperatura</label>
+                <div class="control-linea">
+                  <input id="temperatura" type="number" inputmode="decimal" min="-15" max="35" step="1" value="8" aria-label="Temperatura en grados Celsius" />
+                  <span class="unidad">°C</span>
+                </div>
+              </div>
+              <div class="campo">
+                <label for="viento">Viento</label>
+                <div class="control-linea">
+                  <input id="viento" type="number" inputmode="numeric" min="0" max="120" step="1" value="25" aria-label="Viento en kilómetros por hora" />
+                  <span class="unidad">km/h</span>
+                </div>
+              </div>
+            </div>
+            <p id="mensajeClima" class="aviso" aria-live="polite"></p>
+          </fieldset>
+        </form>
+        <div id="presupuestoQuincho" hidden></div>
+
+        <section id="panelPronostico" class="panel-secundario" aria-labelledby="titulo-pronostico">
+          <div class="panel-secundario__titulo">
+            <h3 id="titulo-pronostico">Pronóstico de parrilla</h3>
+            <button id="actualizarPronostico" type="button" class="boton boton--ghost">Actualizar</button>
+          </div>
+          <p id="resumenPronostico" class="ayuda">Río Gallegos · Próximos horarios</p>
+          <div id="tablaPronostico" class="tabla-pronostico" aria-live="polite"></div>
+        </section>
+      </section>
+
+      <section class="panel panel--resultados" aria-labelledby="titulo-resultados">
+        <div class="panel__titulo"><h2 id="titulo-resultados">Resultado</h2></div>
+        <div id="resumenComensales" class="resumen-comensales" aria-live="polite"></div>
+        <div id="resultadoCards" class="resultado-grid" aria-live="polite"></div>
+        <section id="presupuestoAsado" class="presupuesto-asado" aria-label="Presupuesto del asado">
+          <div id="totalPresupuesto"></div>
+          <div id="detallePresupuesto" class="detalle-presupuesto"></div>
+        </section>
+        <p id="indicadorContextual" class="indicador" aria-live="polite"></p>
+        <div class="acciones">
+          <button id="guardarAsado" type="button" class="boton">Guardar asado</button>
+          <button id="compartirWhatsapp" type="button" class="boton boton--whatsapp">Compartir por WhatsApp</button>
+          <button id="generarLista" type="button" class="boton boton--ghost">Generar lista de compras</button>
+          <button id="copiarEnlace" type="button" class="boton boton--ghost">Copiar enlace del asado</button>
+          <div id="salidaEnlace" class="campo" hidden>
+            <label for="enlaceGenerado">Enlace con precios guardados</label>
+            <div class="control-linea"><input id="enlaceGenerado" type="text" readonly /></div>
+          </div>
+        </div>
+      </section>
+    </main>
+
+    <dialog id="modalAjustes" class="modal-ajustes" aria-labelledby="tituloAjustes">
+      <div class="modal-ajustes__barra">
+        <h2 id="tituloAjustes">Ajustes e historial</h2>
+        <button id="cerrarAjustes" type="button" class="boton-cerrar" aria-label="Cerrar ajustes" title="Cerrar">×</button>
+      </div>
+      <form id="formularioAjustes" class="ajustes-contenido" novalidate>
+        <details class="acordeon-ajustes" id="ajustesCortes">
+          <summary>Cortes y compra</summary>
+          <div class="acordeon-ajustes__contenido">
+            <fieldset class="ajustes-campo">
+              <legend>Modo de compra</legend>
+              <div class="switch-modo" role="radiogroup" aria-label="Modo de compra">
+                <label><input type="radio" name="modoCompra" value="premium" checked /><span>Premium</span></label>
+                <label><input type="radio" name="modoCompra" value="economico" /><span>Económico</span></label>
+              </div>
+            </fieldset>
+            <div class="campo">
+              <label for="tipoCarne">Tipo de carne</label>
+              <select id="tipoCarne">
+                <option value="automatico">Según modo de compra</option>
+                <option value="premium">Vacío y tira en partes iguales</option>
+                <option value="con_hueso">Vacuno con hueso</option>
+                <option value="sin_hueso">Vacuno sin hueso</option>
+                <option value="cerdo">Cerdo</option>
+                <option value="pollo">Pollo con hueso</option>
+                <option value="mixto_cerdo">Vacuno + cerdo</option>
+                <option value="mixto_pollo">Vacuno + pollo</option>
+                <option value="cordero">Cordero patagónico</option>
+              </select>
+            </div>
+            <label class="opcion-check"><input id="ajustarPorCorte" type="checkbox" />Ajustar gramajes según hueso y rendimiento</label>
+            <p id="detalleCorte" class="ayuda" role="status"></p>
+            <p class="ayuda">Cordero: compra por medias reses estimadas de 6,25 kg. Confirmá el peso real en carnicería.</p>
+            <div class="campo">
+              <label for="personasAchuras">Personas que comen achuras</label>
+              <div class="control-linea"><input id="personasAchuras" type="number" inputmode="numeric" pattern="[0-9]*" min="0" step="1" value="0" aria-describedby="detalleAchuras" /></div>
+              <p id="detalleAchuras" class="ayuda" role="status">120 g crudos por persona, adicionales a la carne principal.</p>
+            </div>
+          </div>
+        </details>
+
+        <details class="acordeon-ajustes" id="ajustesCalibracion">
+          <summary>Ajuste por experiencia</summary>
+          <div class="acordeon-ajustes__contenido">
+            <div class="campo">
+              <label for="factorCompra">Factor de compra de carne <output id="valorFactorCompra" for="factorCompra">1x</output></label>
+              <input id="factorCompra" type="range" min="0.6" max="1.5" step="0.01" value="1" aria-describedby="resumenCalibracion" />
+            </div>
+            <p id="resumenCalibracion" class="ayuda" role="status"></p>
+            <p class="ayuda">Solo ajusta la carne principal. No cambia gramajes base, achuras, embutidos ni bebidas. El combustible y el presupuesto acompañan la compra resultante.</p>
+            <button id="restablecerFactor" type="button" class="boton-icono" aria-label="Restablecer factor de compra a uno" title="Restablecer factor a 1x">↺</button>
+          </div>
+        </details>
+
+        <details class="acordeon-ajustes" id="ajustesBebidas">
+          <summary>Bebidas y acompañamientos</summary>
+          <div class="acordeon-ajustes__contenido">
+            <label class="opcion-check"><input id="incluirExtras" type="checkbox" />Incluir bebidas y acompañamientos</label>
+            <label class="opcion-check"><input id="panGeneroso" type="checkbox" />Pan generoso</label>
+            <label class="opcion-check"><input id="ensaladaAbundante" type="checkbox" />Ensalada abundante</label>
+            <div class="campo">
+              <label for="adultosBebedores">Adultos que toman alcohol</label>
+              <div class="control-linea"><input id="adultosBebedores" type="number" inputmode="numeric" pattern="[0-9]*" min="0" step="1" value="0" /></div>
+            </div>
+            <p class="ayuda">Bebidas y acompañamientos se presupuestan en Otros gastos. No incluyen a niños en el cálculo de alcohol.</p>
+          </div>
+        </details>
+
+        <details class="acordeon-ajustes" id="ajustesLista">
+          <summary>Lista editable <span id="progresoLista"></span></summary>
+          <div class="acordeon-ajustes__contenido">
+            <p class="ayuda">Las cantidades editadas no modifican el cálculo ni el presupuesto sugerido.</p>
+            <div id="listaEditable" class="lista-editable"></div>
+            <button id="agregarItemLista" type="button" class="boton boton--ghost">+ Agregar producto</button>
+            <button id="restaurarLista" type="button" class="boton boton--ghost">Restaurar lista sugerida</button>
+          </div>
+        </details>
+
+        <details class="acordeon-ajustes" id="ajustesPrecios">
+          <summary>Precios y extras</summary>
+          <div class="acordeon-ajustes__contenido grid-doble">
+            <div class="campo" id="campoPrecioCarne">
+              <label for="precioCarne">Vacuno por kg</label>
+              <div class="control-linea"><span class="prefijo">$</span><input id="precioCarne" type="number" inputmode="numeric" min="0" step="1" placeholder="0" /></div>
+            </div>
+            <div class="campo">
+              <label for="precioCarbon">Bolsa de carbón de 4 kg</label>
+              <div class="control-linea"><span class="prefijo">$</span><input id="precioCarbon" type="number" inputmode="numeric" min="0" step="1" placeholder="0" /></div>
+            </div>
+            <div class="campo" id="campoPrecioPollo">
+              <label for="precioPollo">Pollo por kg</label>
+              <div class="control-linea"><span class="prefijo">$</span><input id="precioPollo" type="number" inputmode="numeric" min="0" step="1" placeholder="0" /></div>
+            </div>
+            <div class="campo" id="campoPrecioCerdo">
+              <label for="precioCerdo">Cerdo por kg</label>
+              <div class="control-linea"><span class="prefijo">$</span><input id="precioCerdo" type="number" inputmode="numeric" min="0" step="1" placeholder="0" /></div>
+            </div>
+            <div class="campo" id="campoPrecioCordero">
+              <label for="precioCordero">Cordero por kg</label>
+              <div class="control-linea"><span class="prefijo">$</span><input id="precioCordero" type="number" inputmode="numeric" min="0" step="1" placeholder="0" /></div>
+            </div>
+            <div class="campo">
+              <label for="precioChorizo">Chorizo por unidad</label>
+              <div class="control-linea"><span class="prefijo">$</span><input id="precioChorizo" type="number" inputmode="numeric" min="0" step="1" placeholder="0" /></div>
+            </div>
+            <div class="campo">
+              <label for="precioMorcilla">Morcilla por unidad</label>
+              <div class="control-linea"><span class="prefijo">$</span><input id="precioMorcilla" type="number" inputmode="numeric" min="0" step="1" placeholder="0" /></div>
+            </div>
+            <div class="campo" id="campoPrecioAchuras">
+              <label for="precioAchuras">Achuras por kg</label>
+              <div class="control-linea"><span class="prefijo">$</span><input id="precioAchuras" type="number" inputmode="numeric" min="0" step="1" placeholder="0" /></div>
+            </div>
+            <div class="campo">
+              <label for="precioLena">Leña por kg</label>
+              <div class="control-linea"><span class="prefijo">$</span><input id="precioLena" type="number" inputmode="numeric" min="0" step="1" placeholder="0" /></div>
+            </div>
+            <div class="campo">
+              <label for="extras">Otros gastos</label>
+              <div class="control-linea"><span class="prefijo">$</span><input id="extras" type="number" inputmode="numeric" min="0" step="1" placeholder="0" /></div>
+            </div>
+          </div>
+        </details>
+
+        <details class="acordeon-ajustes historial" id="ajustesHistorial">
+          <summary>Historial de asados</summary>
+          <div id="historialAsados" class="historial__contenido"></div>
+          <div class="archivo-react">
+            <h3>Historial anterior</h3>
+            <p id="estadoImportacionReact" class="ayuda" role="status"></p>
+            <button id="importarHistorialReact" type="button" class="boton boton--ghost">Importar historial anterior</button>
+            <p class="ayuda">La copia importada es independiente del historial actual. Los datos originales no se borran ni se modifican.</p>
+            <div id="archivoReact" class="historial-lista"></div>
+          </div>
+        </details>
+        <button type="button" id="btnReset" class="boton boton--ghost boton--reset">↺ Volver a valores por defecto</button>
+      </form>
+    </dialog>
+
+    <dialog id="modalLista" class="modal-lista" aria-labelledby="tituloLista">
+      <div class="modal-lista__barra">
+        <h2 id="tituloLista">Lista de compras</h2>
+        <button id="cerrarLista" type="button" class="boton-cerrar" aria-label="Cerrar lista" title="Cerrar">×</button>
+      </div>
+      <pre id="contenidoLista" class="lista-limpia"></pre>
+      <div class="modal-lista__acciones">
+        <button id="imprimirLista" type="button" class="boton">Imprimir</button>
+        <button id="copiarLista" type="button" class="boton boton--ghost">Copiar</button>
+      </div>
+    </dialog>
+
+    <dialog id="modalCompartido" class="modal-ajustes" aria-labelledby="tituloCompartido" aria-describedby="avisoCompartido">
+      <div class="modal-ajustes__barra">
+        <h2 id="tituloCompartido">Asado compartido</h2>
+        <button id="cerrarCompartido" type="button" class="boton-cerrar" aria-label="Cerrar asado compartido" title="Cerrar">×</button>
+      </div>
+      <div class="ajustes-contenido">
+        <p id="resumenCompartido" class="resumen-comensales"></p>
+        <p id="fechaCompartido" class="ayuda"></p>
+        <p id="detalleCompatibilidad" class="ayuda" hidden></p>
+        <div id="campoPagadoresAnterior" class="campo" hidden>
+          <label for="pagadoresAnterior">Personas que pagan en el nuevo asado</label>
+          <div class="control-linea"><input id="pagadoresAnterior" type="number" inputmode="numeric" pattern="[0-9]*" min="0" step="1" placeholder="Sin registrar" aria-describedby="ayudaPagadoresAnterior" /></div>
+          <p id="ayudaPagadoresAnterior" class="ayuda"></p>
+        </div>
+        <p id="avisoCompartido" class="ayuda">Cargar reemplaza el formulario y restablece la lista sugerida. Tu historial no se elimina. Los precios del enlace son editables y no se actualizan desde internet.</p>
+        <div class="acciones">
+          <button id="aceptarCompartido" type="button" class="boton">Cargar asado compartido</button>
+          <button id="cancelarCompartido" type="button" class="boton boton--ghost">Conservar mi asado</button>
+        </div>
+      </div>
+    </dialog>
+
+    <p id="estadoGuardado" class="aviso-guardado" role="status"></p>
+    <footer class="pie">Asado Pro Río Gallegos</footer>
   </body>
 </html>

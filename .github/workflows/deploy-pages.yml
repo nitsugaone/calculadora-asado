@@ -1,22 +1,43 @@
-name: Build and deploy to GitHub Pages
+name: Deploy static site to GitHub Pages
 
 on:
   push:
+    branches:
+      - main
+  pull_request:
     branches:
       - main
   workflow_dispatch:
 
 permissions:
   contents: read
-  pages: write
-  id-token: write
 
 concurrency:
-  group: pages
+  group: pages-${{ github.event_name }}-${{ github.ref }}
   cancel-in-progress: true
 
 jobs:
+  validate:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+
+      - name: Validate calculator
+        run: node --test tests/calculos.test.cjs
+
   deploy:
+    if: github.event_name != 'pull_request'
+    needs: validate
+    permissions:
+      contents: read
+      pages: write
+      id-token: write
     environment:
       name: github-pages
       url: ${{ steps.deployment.outputs.page_url }}
@@ -25,37 +46,19 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
 
-      - name: Setup pnpm
-        uses: pnpm/action-setup@v4
-
-      - name: Setup Node
-        uses: actions/setup-node@v4
-        with:
-          node-version: 22
-          cache: pnpm
-          cache-dependency-path: pnpm-lock.yaml
-
-      - name: Check Node
-        run: node --version
-
-      - name: Install dependencies
-        run: pnpm install --frozen-lockfile
-
-      - name: Type check
-        run: pnpm lint
-
-      - name: Build
-        run: pnpm build
-        env:
-          GITHUB_PAGES: 'true'
-
       - name: Configure Pages
         uses: actions/configure-pages@v5
 
-      - name: Upload build artifact
+      - name: Prepare static site
+        run: |
+          mkdir -p .pages-site/public
+          cp index.html style.css script.js sw.js manifest.json icon.svg .pages-site/
+          cp public/manifest.json public/icon.svg .pages-site/public/
+
+      - name: Upload static artifact
         uses: actions/upload-pages-artifact@v4
         with:
-          path: dist
+          path: .pages-site
 
       - name: Deploy to GitHub Pages
         id: deployment
