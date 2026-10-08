@@ -1,5 +1,7 @@
 /*
   CHANGELOG
+  - Recuperé cortes, rendimiento opcional, cordero por media res y bebidas.
+  - Agregué lista editable persistente compartida con impresión e historial.
   - Recuperé perfiles de carne cruda, independientes del modo de compra y del reparto de gastos.
   - Moví ajustes e historial a un diálogo y reorganicé clima/pronóstico al elegir Quincho.
   - Corregí compras con cero personas y el redondeo del desglose de cortes.
@@ -34,12 +36,22 @@ const ESTADO_INICIAL = {
   mujeres: 0,
   ninos: 0,
   modo: 'premium',
+  tipoCarne: 'automatico',
+  ajustarPorCorte: false,
+  incluirExtras: false,
+  panGeneroso: false,
+  ensaladaAbundante: false,
+  adultosBebedores: 0,
+  listaEdiciones: {},
+  listaPersonalizados: [],
   entorno: 'chulengo',
   temperatura: 8,
   viento: 25,
   precioCarne: '',
   precioCarbon: '',
   precioPollo: '',
+  precioCerdo: '',
+  precioCordero: '',
   precioChorizo: '',
   precioMorcilla: '',
   precioLena: '',
@@ -48,8 +60,26 @@ const ESTADO_INICIAL = {
 
 const CLAVES_PRECIOS = [
   'precioCarne', 'precioCarbon', 'precioPollo', 'precioChorizo',
-  'precioMorcilla', 'precioLena', 'extras',
+  'precioMorcilla', 'precioLena', 'precioCerdo', 'precioCordero', 'extras',
 ];
+
+// Rendimientos orientativos y gramajes recuperados de la versión avanzada.
+// El ajuste es optativo: por defecto se mantienen los 750/500/250 g crudos solicitados.
+const TIPOS_CARNE = {
+  automatico: { etiqueta: 'Según modo de compra' },
+  premium: { etiqueta: 'Vacío y tira', mix: [0.5, 0.5, 0, 0], gramos: [720, 490, 250], rendimiento: 0.765 },
+  con_hueso: { etiqueta: 'Vacuno con hueso', mix: [0, 1, 0, 0], gramos: [880, 590, 300], rendimiento: 0.6 },
+  sin_hueso: { etiqueta: 'Vacuno sin hueso', mix: [1, 0, 0, 0], gramos: [600, 400, 200], rendimiento: 0.93 },
+  cerdo: { etiqueta: 'Cerdo', mix: [0, 0, 0, 1], gramos: [620, 420, 210], rendimiento: 0.9 },
+  pollo: { etiqueta: 'Pollo con hueso', mix: [0, 0, 1, 0], gramos: [820, 550, 280], rendimiento: 0.65 },
+  mixto_cerdo: { etiqueta: 'Vacuno + cerdo', mix: [0.45, 0.25, 0, 0.3], gramos: [660, 450, 230], rendimiento: 0.8385 },
+  mixto_pollo: { etiqueta: 'Vacuno + pollo', mix: [0.25, 0.35, 0.4, 0], gramos: [760, 520, 260], rendimiento: 0.7025 },
+  cordero: { etiqueta: 'Cordero patagónico', mix: [0, 0, 0, 0], gramos: [950, 650, 330], rendimiento: 0.55 },
+};
+const CLAVES_OPCIONES = ['tipoCarne', 'ajustarPorCorte', 'incluirExtras', 'panGeneroso', 'ensaladaAbundante', 'adultosBebedores'];
+const CLAVES_CHECKS = ['ajustarPorCorte', 'incluirExtras', 'panGeneroso', 'ensaladaAbundante'];
+let listaEdiciones = {};
+let listaPersonalizados = [];
 
 const MODOS_COMPRA = {
   premium: {
@@ -97,6 +127,8 @@ const elementos = {
   precioCarbon: $('#precioCarbon'),
   extras: $('#extras'),
   precioPollo: $('#precioPollo'),
+  precioCerdo: $('#precioCerdo'),
+  precioCordero: $('#precioCordero'),
   precioChorizo: $('#precioChorizo'),
   precioMorcilla: $('#precioMorcilla'),
   precioLena: $('#precioLena'),
@@ -126,6 +158,7 @@ const elementos = {
   imprimirLista: $('#imprimirLista'),
   copiarLista: $('#copiarLista'),
   estadoConexion: $('#estadoConexion'),
+  ...Object.fromEntries(CLAVES_OPCIONES.map((clave) => [clave, $(`#${clave}`)])),
 };
 
 let calculoActual = null;
@@ -181,6 +214,11 @@ function normalizarEstado(datos) {
     gratis: parsearEnteroPositivo(estado.gratis),
     ...Object.fromEntries(CLAVES_PERFILES.map((clave) => [clave, parsearEnteroPositivo(estado[clave])])),
     modo: Object.hasOwn(MODOS_COMPRA, estado.modo) ? estado.modo : ESTADO_INICIAL.modo,
+    tipoCarne: Object.hasOwn(TIPOS_CARNE, estado.tipoCarne) ? estado.tipoCarne : 'automatico',
+    ...Object.fromEntries(CLAVES_CHECKS.map((clave) => [clave, estado[clave] === true
+      && (clave !== 'ajustarPorCorte' || Object.hasOwn(TIPOS_CARNE, estado.tipoCarne) && estado.tipoCarne !== 'automatico')])),
+    adultosBebedores: parsearEnteroPositivo(estado.adultosBebedores),
+    ...normalizarLista(estado),
     entorno: Object.hasOwn(COEFICIENTE_ENTORNO, estado.entorno) ? estado.entorno : ESTADO_INICIAL.entorno,
     temperatura: clima('temperatura', -15, 35),
     viento: clima('viento', 0, 120),
@@ -224,6 +262,11 @@ function obtenerEstado() {
     gratis: leerEnteroInput(elementos.invitadosGratis),
     ...Object.fromEntries(CLAVES_PERFILES.map((clave) => [clave, leerEnteroInput(elementos[clave])])),
     modo,
+    tipoCarne: elementos.tipoCarne.value,
+    ...Object.fromEntries(CLAVES_CHECKS.map((clave) => [clave, elementos[clave].checked])),
+    adultosBebedores: elementos.adultosBebedores.value,
+    listaEdiciones,
+    listaPersonalizados,
     entorno,
     temperatura: leerNumeroClimatico(elementos.temperatura, -15, 35),
     viento: leerNumeroClimatico(elementos.viento, 0, 120),
@@ -246,17 +289,26 @@ function calcularAsado(estado) {
   estado = normalizarEstado(estado);
   const totalPersonas = estado.pagadores + estado.gratis;
   const modo = MODOS_COMPRA[estado.modo] || MODOS_COMPRA.premium;
+  const corte = TIPOS_CARNE[estado.tipoCarne];
+  const gramajes = estado.ajustarPorCorte && corte.gramos ? corte.gramos : Object.values(GRAMOS_POR_PERFIL);
+  const gramosSinPerfil = estado.ajustarPorCorte && corte.gramos ? corte.gramos[1] : GRAMOS_SIN_PERFIL;
   const totalPerfiles = CLAVES_PERFILES.reduce((suma, clave) => suma + estado[clave], 0);
   const perfilesValidos = totalPerfiles <= totalPersonas;
   const sinPerfil = Math.max(0, totalPersonas - totalPerfiles);
   // Carne cruda: hombres × 750 + mujeres × 500 + niños × 250 + sin perfil × 500 g.
   // La compra se redondea hacia arriba a 100 g, sin reducir la base solicitada.
   const gramosCarneTotal = perfilesValidos ? CLAVES_PERFILES.reduce(
-    (suma, clave) => suma + estado[clave] * GRAMOS_POR_PERFIL[clave], sinPerfil * GRAMOS_SIN_PERFIL
+    (suma, clave, indice) => suma + estado[clave] * gramajes[indice], sinPerfil * gramosSinPerfil
   ) : 0;
-  const kgCarneTotal = Math.ceil(gramosCarneTotal / 100) / 10;
+  const mediasReses = estado.tipoCarne === 'cordero' ? Math.ceil(gramosCarneTotal / 6250) : 0;
+  const kgCordero = mediasReses * 6.25;
+  const kgCarneTotal = estado.tipoCarne === 'cordero' ? kgCordero : Math.ceil(gramosCarneTotal / 100) / 10;
   const hayComensales = perfilesValidos && totalPersonas > 0;
-  const [kgVacio, kgTira, kgPollo] = repartirCortes(kgCarneTotal, modo);
+  const mezcla = corte.mix ? { vacio: corte.mix[0], tira: corte.mix[1], pollo: corte.mix[2], cerdo: corte.mix[3] } : modo;
+  const [kgVacio, kgTira, kgPollo, kgCerdo] = estado.tipoCarne === 'cordero'
+    ? [0, 0, 0, 0] : repartirCortes(kgCarneTotal, mezcla);
+  const rendimiento = kgCarneTotal === 0 ? 0 : kgCordero > 0 ? 0.55
+    : (kgVacio * 0.93 + kgTira * 0.6 + kgPollo * 0.65 + kgCerdo * 0.9) / kgCarneTotal;
   const chorizos = hayComensales ? Math.ceil(totalPersonas * modo.chorizosPorPersona) : 0;
   const morcillas = hayComensales ? Math.ceil(totalPersonas * 0.35) : 0;
   const factorTermico = calcularFactorTermico(estado.temperatura, estado.viento, estado.entorno);
@@ -269,6 +321,8 @@ function calcularAsado(estado) {
   const rubros = [
     ['Vacuno', redondear(kgVacio + kgTira, 1), 'precioCarne'],
     ['Pollo', kgPollo, 'precioPollo'],
+    ['Cerdo', kgCerdo, 'precioCerdo'],
+    ['Cordero', kgCordero, 'precioCordero'],
     ['Chorizos', chorizos, 'precioChorizo'],
     ['Morcillas', morcillas, 'precioMorcilla'],
     ['Carbón', bolsasCarbon, 'precioCarbon'],
@@ -281,6 +335,9 @@ function calcularAsado(estado) {
     }));
   if (hayComensales && estado.extras !== '') {
     detallePresupuesto.push({ nombre: 'Extras', cantidad: 1, precio: estado.extras, subtotal: estado.extras });
+  }
+  if (hayComensales && estado.incluirExtras && estado.extras === '') {
+    detallePresupuesto.push({ nombre: 'Bebidas y acompañamientos', cantidad: 1, precio: '', subtotal: null });
   }
   const preciosFaltantes = detallePresupuesto.filter((rubro) => rubro.subtotal === null)
     .map((rubro) => rubro.nombre);
@@ -299,6 +356,14 @@ function calcularAsado(estado) {
     kgVacio,
     kgTira,
     kgPollo,
+    kgCerdo,
+    kgCordero,
+    mediasReses,
+    rendimiento,
+    kgNetoEstimado: kgCarneTotal * rendimiento,
+    gramajes,
+    gramosSinPerfil,
+    bebidas: calcularBebidas(estado, hayComensales ? totalPersonas : 0),
     chorizos,
     morcillas,
     factorTermico: redondear(factorTermico, 2),
@@ -317,7 +382,7 @@ function calcularAsado(estado) {
 // Reparte unidades de 100 g por mayor resto: los cortes siempre suman el total mostrado.
 function repartirCortes(kgTotal, modo) {
   const unidades = Math.round(kgTotal * 10);
-  const cortes = [modo.vacio, modo.tira, modo.pollo].map((proporcion, indice) => {
+  const cortes = [modo.vacio, modo.tira, modo.pollo, modo.cerdo || 0].map((proporcion, indice) => {
     const exacto = unidades * proporcion;
     return { indice, unidades: Math.floor(exacto), resto: exacto - Math.floor(exacto) };
   });
@@ -330,6 +395,127 @@ function repartirCortes(kgTotal, modo) {
 function redondear(valor, decimales) {
   const factor = 10 ** decimales;
   return Math.round(valor * factor) / factor;
+}
+
+// Mantiene el peso exacto de medias reses (6,25 kg) al comprar y presupuestar.
+function formatearCompraKg(valor) {
+  return Number.isInteger(valor * 10) ? formatearKg(valor) : `${formatearDecimal(valor, 2)} kg`;
+}
+
+// Las bebidas son optativas; el alcohol requiere una cantidad explícita de adultos.
+function calcularBebidas(estado, personas) {
+  if (!estado.incluirExtras || personas === 0) return [];
+  const ninos = estado.ninos;
+  const bebedores = Math.min(estado.adultosBebedores, Math.max(0, personas - ninos));
+  const agua = redondear(personas * 0.55 + ninos * 0.25, 1);
+  const gaseosa = redondear(personas * 0.45 + ninos * 0.35, 1);
+  const cerveza = redondear(bebedores * 1.1, 1);
+  return [
+    ['agua', 'Agua', agua, 'l', '💧'],
+    ['gaseosa', 'Gaseosa / jugo', gaseosa, 'l', '🥤'],
+    ['cerveza', 'Cerveza', cerveza, 'l', '🍺'],
+    ['vino', 'Vino', Math.ceil(bebedores / 4), 'botellas de 750 ml', '🍷'],
+    ['hielo', 'Hielo', Math.max(2, Math.ceil((agua + gaseosa + cerveza) * 0.45)), 'kg', '🧊'],
+    ['pan', 'Pan', redondear(personas * (estado.panGeneroso ? 0.13 : 0.09), 1), 'kg', '🍞'],
+    ['ensalada', 'Ensalada', redondear(personas * (estado.ensaladaAbundante ? 0.28 : 0.18), 1), 'kg', '🥗'],
+    ['papas', 'Papas', redondear(personas * 0.22, 1), 'kg', '🥔'],
+    ['provoleta', 'Provoleta', Math.ceil((personas - ninos) / 5), 'unidades', '🧀'],
+    ['chimichurri', 'Chimichurri', Math.ceil(personas / 10), 'frascos', '🌿'],
+  ].filter(([, , cantidad]) => cantidad > 0).map(([id, nombre, cantidad, unidad, emoji]) => ({
+    id, nombre, cantidad, unidad, emoji,
+  }));
+}
+
+// Limita y valida la lista guardada; ningún texto del usuario se interpreta como HTML.
+function normalizarLista(estado) {
+  const texto = (valor, limite) => typeof valor === 'string' ? valor.replace(/[\r\n]+/g, ' ').slice(0, limite) : '';
+  const idValido = (id) => /^[a-z][a-z0-9_]{0,60}$/.test(id);
+  const ediciones = estado.listaEdiciones;
+  const entradas = ediciones && typeof ediciones === 'object' && !Array.isArray(ediciones) ? Object.entries(ediciones) : [];
+  return {
+    listaEdiciones: Object.fromEntries(entradas.filter(([id, item]) => idValido(id) && item && typeof item === 'object')
+      .slice(0, 100).map(([id, item]) => [id, {
+        nombre: texto(item.nombre, 80), cantidad: texto(item.cantidad, 60),
+        comprado: item.comprado === true, excluido: item.excluido === true,
+      }])),
+    listaPersonalizados: (Array.isArray(estado.listaPersonalizados) ? estado.listaPersonalizados : [])
+      .filter((item) => item && typeof item.id === 'string' && /^personal_[0-9_]+$/.test(item.id))
+      .slice(0, 30).map((item) => ({ id: item.id, nombre: texto(item.nombre, 80), cantidad: texto(item.cantidad, 60) })),
+  };
+}
+
+// Genera una única fuente para editar, compartir e imprimir las compras.
+function itemsSugeridos(calculo) {
+  if (!calculo.totalPersonas || !calculo.perfilesValidos) return [];
+  const carnes = [
+    ['vacio', 'Vacío', calculo.kgVacio], ['tira', 'Tira/costilla', calculo.kgTira],
+    ['pollo', 'Pollo', calculo.kgPollo], ['cerdo', 'Cerdo', calculo.kgCerdo],
+    ['cordero', `Cordero (${calculo.mediasReses} medias reses)`, calculo.kgCordero],
+  ].filter(([, , cantidad]) => cantidad > 0).map(([id, nombre, cantidad]) => ({ id, nombre, cantidad: formatearCompraKg(cantidad) }));
+  return [...carnes,
+    { id: 'chorizos', nombre: 'Chorizos', cantidad: `${FORMATO_AR.format(calculo.chorizos)} unidades` },
+    { id: 'morcillas', nombre: 'Morcillas', cantidad: `${FORMATO_AR.format(calculo.morcillas)} unidades` },
+    { id: 'carbon', nombre: 'Carbón', cantidad: `${formatearKg(calculo.carbonKg)} (${FORMATO_AR.format(calculo.bolsasCarbon)} bolsas)` },
+    { id: 'lena', nombre: 'Leña', cantidad: formatearKg(calculo.lenaKg) },
+    ...calculo.bebidas.map((item) => ({ id: item.id, nombre: item.nombre, cantidad: `${formatearDecimal(item.cantidad)} ${item.unidad}` })),
+  ];
+}
+
+function obtenerLista(calculo) {
+  if (!calculo.totalPersonas || !calculo.perfilesValidos) return [];
+  return [...itemsSugeridos(calculo), ...calculo.listaPersonalizados].map((item) => {
+    const edicion = calculo.listaEdiciones[item.id];
+    return { ...item, nombre: edicion?.nombre || item.nombre, cantidad: edicion?.cantidad || item.cantidad,
+      comprado: edicion?.comprado === true, excluido: edicion?.excluido === true };
+  }).filter((item) => !item.excluido);
+}
+
+function actualizarProgresoLista() {
+  const lista = obtenerLista(calcularAsado(obtenerEstado()));
+  $('#progresoLista').textContent = `${lista.filter((item) => item.comprado).length}/${lista.length}`;
+}
+
+// Editar no redibuja los inputs: conserva el cursor y la navegación con Tab.
+function renderizarListaEditable(calculo) {
+  const contenedor = $('#listaEditable');
+  contenedor.replaceChildren();
+  const lista = obtenerLista(calculo);
+  if (!lista.length) contenedor.append(crearNodo('p', 'ayuda', 'Ingresá comensales para preparar las compras.'));
+  lista.forEach((item) => {
+    const fila = crearNodo('div', 'lista-editable__fila');
+    fila.dataset.id = item.id;
+    const check = crearNodo('input');
+    check.type = 'checkbox';
+    check.checked = item.comprado;
+    check.setAttribute('aria-label', `Comprado: ${item.nombre}`);
+    const campos = crearNodo('div', 'lista-editable__campos');
+    const nombre = crearNodo('input');
+    nombre.type = 'text'; nombre.value = item.nombre; nombre.maxLength = 80;
+    nombre.setAttribute('aria-label', `Producto: ${item.nombre}`);
+    const cantidad = crearNodo('input');
+    cantidad.type = 'text'; cantidad.value = item.cantidad; cantidad.maxLength = 60;
+    cantidad.setAttribute('aria-label', `Cantidad: ${item.nombre}`);
+    const actualizar = () => {
+      listaEdiciones[item.id] = { nombre: nombre.value, cantidad: cantidad.value, comprado: check.checked, excluido: false };
+      guardarEstadoFormulario(); actualizarProgresoLista();
+    };
+    nombre.addEventListener('input', actualizar);
+    cantidad.addEventListener('input', actualizar);
+    check.addEventListener('change', actualizar);
+    const borrar = crearNodo('button', 'boton-icono', '×');
+    borrar.type = 'button'; borrar.title = `Quitar ${item.nombre}`;
+    borrar.setAttribute('aria-label', borrar.title);
+    borrar.addEventListener('click', () => {
+      if (item.id.startsWith('personal_')) {
+        listaPersonalizados = listaPersonalizados.filter((otro) => otro.id !== item.id);
+        delete listaEdiciones[item.id];
+      } else listaEdiciones[item.id] = { ...listaEdiciones[item.id], excluido: true };
+      confirmarCambios();
+    });
+    campos.append(nombre, cantidad); fila.append(check, campos, borrar); contenedor.append(fila);
+  });
+  $('#agregarItemLista').disabled = !calculo.totalPersonas || !calculo.perfilesValidos || listaPersonalizados.length >= 30;
+  actualizarProgresoLista();
 }
 
 function crearNodo(etiqueta, clase, texto) {
@@ -355,7 +541,15 @@ function crearCard({ emoji, alt, titulo, valor, detalle }) {
 }
 
 function renderizarResultados(calculo) {
-  $('#campoPrecioPollo').hidden = calculo.modo !== 'economico';
+  $('#campoPrecioCarne').hidden = calculo.kgVacio + calculo.kgTira === 0;
+  $('#campoPrecioPollo').hidden = calculo.kgPollo === 0;
+  $('#campoPrecioCerdo').hidden = calculo.kgCerdo === 0;
+  $('#campoPrecioCordero').hidden = calculo.kgCordero === 0;
+  elementos.ajustarPorCorte.disabled = calculo.tipoCarne === 'automatico';
+  elementos.ajustarPorCorte.checked = calculo.ajustarPorCorte;
+  elementos.adultosBebedores.max = String(Math.max(0, calculo.totalPersonas - calculo.ninos));
+  elementos.adultosBebedores.setAttribute('aria-description', `Se calculan como máximo ${elementos.adultosBebedores.max} adultos, excluyendo los niños declarados.`);
+  $('#detalleCorte').textContent = `${TIPOS_CARNE[calculo.tipoCarne].etiqueta}. Carne cruda por perfil: ${calculo.gramajes.join(' / ')} g; sin perfil: ${calculo.gramosSinPerfil} g. Rendimiento comestible estimado: ${formatearDecimal(calculo.rendimiento * 100)}%.`;
   const deshabilitar = calculo.totalPersonas === 0 || !calculo.perfilesValidos;
   elementos.guardarAsado.disabled = deshabilitar;
   elementos.compartirWhatsapp.disabled = deshabilitar;
@@ -378,8 +572,8 @@ function renderizarResultados(calculo) {
       emoji: '🥩',
       alt: 'Carne',
       titulo: 'Carne total',
-      valor: formatearKg(calculo.kgCarneTotal),
-      detalle: `Carne cruda · ${calculo.porciones} porciones aprox. de ${PORCION_ESTANDAR_GRAMOS} g · compra en múltiplos de 100 g`,
+      valor: formatearCompraKg(calculo.kgCarneTotal),
+      detalle: `Carne cruda · ${calculo.porciones} porciones aprox. de ${PORCION_ESTANDAR_GRAMOS} g crudos · ${calculo.mediasReses ? `${calculo.mediasReses} medias reses` : 'compra en múltiplos de 100 g'} · neto comestible estimado ${formatearKg(calculo.kgNetoEstimado)}`,
     }),
     crearCard({
       emoji: '🔪',
@@ -424,6 +618,13 @@ function renderizarResultados(calculo) {
       detalle: `factor térmico ${formatearDecimal(calculo.factorTermico, 2)}x`,
     }),
   ];
+
+  if (!calculo.kgTira) cards.splice(2, 1);
+  if (!calculo.kgVacio) cards.splice(1, 1);
+  if (calculo.kgCerdo) cards.push(crearCard({ emoji: '🥩', alt: 'Cerdo', titulo: 'Cerdo', valor: formatearKg(calculo.kgCerdo), detalle: 'carne cruda sugerida' }));
+  if (calculo.kgCordero) cards.push(crearCard({ emoji: '🍖', alt: 'Cordero', titulo: 'Cordero', valor: formatearCompraKg(calculo.kgCordero), detalle: `${calculo.mediasReses} medias reses estimadas de 6,25 kg` }));
+  calculo.bebidas.forEach((item) => cards.push(crearCard({ emoji: item.emoji, alt: item.nombre, titulo: item.nombre,
+    valor: `${formatearDecimal(item.cantidad)} ${item.unidad}`, detalle: 'incluido en Otros gastos, si cargaste su costo' })));
 
   if (calculo.kgPollo > 0) {
     cards.splice(
@@ -480,10 +681,11 @@ function renderizarComensales(calculo) {
     cantidadEmojis > 0 ? '👤'.repeat(cantidadEmojis) : 'Sin pagadores';
   elementos.textoPersonas.textContent = `${calculo.pagadores} personas que pagan seleccionadas`;
   elementos.resumenPerfiles.textContent = calculo.perfilesValidos
-    ? `${calculo.sinPerfil} sin perfil · ${GRAMOS_SIN_PERFIL} g de carne cruda por persona.`
+    ? `${calculo.sinPerfil} sin perfil · ${calculo.gramosSinPerfil} g de carne cruda por persona. Perfiles: ${calculo.gramajes.join(' / ')} g.`
     : `Los perfiles suman ${calculo.totalPerfiles}, pero hay ${calculo.totalPersonas} comensales.`;
   CLAVES_PERFILES.forEach((clave) => {
     elementos[clave].setAttribute('aria-invalid', String(!calculo.perfilesValidos));
+    $(`label[for="${clave}"] .gramaje`).textContent = `${calculo.gramajes[CLAVES_PERFILES.indexOf(clave)]} g`;
   });
 }
 
@@ -530,6 +732,7 @@ function actualizarTodo() {
   renderizarComensales(calculoActual);
   renderizarResultados(calculoActual);
   renderizarIndicadores(calculoActual);
+  renderizarListaEditable(calculoActual);
   actualizarEntorno(calculoActual.entorno);
 }
 
@@ -590,6 +793,11 @@ function aplicarEstadoFormulario(estado) {
   elementos.temperatura.value = String(estado.temperatura ?? ESTADO_INICIAL.temperatura);
   elementos.viento.value = String(estado.viento ?? ESTADO_INICIAL.viento);
   CLAVES_PRECIOS.forEach((clave) => { elementos[clave].value = String(estado[clave]); });
+  elementos.tipoCarne.value = estado.tipoCarne;
+  elementos.adultosBebedores.value = String(estado.adultosBebedores);
+  CLAVES_CHECKS.forEach((clave) => { elementos[clave].checked = estado[clave]; });
+  listaEdiciones = estado.listaEdiciones;
+  listaPersonalizados = estado.listaPersonalizados;
 
   marcarRadio('modoCompra', estado.modo || ESTADO_INICIAL.modo);
   marcarRadio('entorno', estado.entorno || ESTADO_INICIAL.entorno);
@@ -632,7 +840,7 @@ function bloquearPegadoNoEntero(evento) {
 
 function prepararInputs() {
   [elementos.personasPagas, elementos.invitadosGratis,
-    ...CLAVES_PERFILES.map((clave) => elementos[clave])].forEach((input) => {
+    elementos.adultosBebedores, ...CLAVES_PERFILES.map((clave) => elementos[clave])].forEach((input) => {
     input.addEventListener('input', debounceRender);
     input.addEventListener('blur', () => {
       normalizarCampoEntero(input);
@@ -664,6 +872,20 @@ function prepararInputs() {
     debounceRender();
   });
   elementos.sliderPersonas.addEventListener('change', confirmarCambios);
+  [elementos.tipoCarne, ...CLAVES_CHECKS.map((clave) => elementos[clave])].forEach((input) => {
+    input.addEventListener('change', confirmarCambios);
+  });
+  $('#agregarItemLista').addEventListener('click', () => {
+    if (listaPersonalizados.length >= 30) return;
+    const id = `personal_${Date.now()}_${Math.floor(Math.random() * 1000000)}`;
+    listaPersonalizados.push({ id, nombre: 'Otro producto', cantidad: '1 unidad' });
+    confirmarCambios();
+    $(`[data-id="${id}"] input[type="text"]`)?.focus();
+  });
+  $('#restaurarLista').addEventListener('click', () => {
+    if (!window.confirm('¿Restaurar la lista sugerida y borrar los productos personalizados?')) return;
+    listaEdiciones = {}; listaPersonalizados = []; confirmarCambios();
+  });
 
   $$('input[name="modoCompra"], input[name="entorno"]').forEach((input) => {
     input.addEventListener('change', () => {
@@ -756,6 +978,7 @@ function crearItemHistorial(item) {
 
 function cargarAsadoHistorial(calculo) {
   aplicarEstadoFormulario({
+    ...calculo,
     pagadores: calculo.pagadores ?? calculo.totalPersonas ?? calculo.personas ?? ESTADO_INICIAL.pagadores,
     gratis: calculo.gratis ?? 0,
     ...Object.fromEntries(CLAVES_PERFILES.map((clave) => [clave, calculo[clave] ?? 0])),
@@ -782,15 +1005,12 @@ function textoResumen(calculo) {
       calculo.pagadores
     )} pagan, ${FORMATO_AR.format(calculo.gratis)} sin pago)`,
     `Modo: ${MODOS_COMPRA[calculo.modo].etiqueta}`,
-    `Perfiles: ${calculo.hombres} hombres (750 g), ${calculo.mujeres} mujeres (500 g), ${calculo.ninos} niños (250 g), ${calculo.sinPerfil} sin perfil (500 g). Carne cruda.`,
-    `Carne total: ${formatearKg(calculo.kgCarneTotal)} (${calculo.porciones} porciones)`,
-    `Vacío: ${formatearKg(calculo.kgVacio)}`,
-    `Tira/costilla: ${formatearKg(calculo.kgTira)}`,
-    calculo.kgPollo > 0 ? `Pollo: ${formatearKg(calculo.kgPollo)}` : null,
-    `Chorizos: ${FORMATO_AR.format(calculo.chorizos)} unidades`,
-    `Morcillas: ${FORMATO_AR.format(calculo.morcillas)} unidades`,
-    `Carbón: ${formatearKg(calculo.carbonKg)} (${FORMATO_AR.format(calculo.bolsasCarbon)} bolsas)`,
-    `Leña: ${formatearKg(calculo.lenaKg)}`,
+    `Corte: ${TIPOS_CARNE[calculo.tipoCarne].etiqueta}`,
+    `Perfiles: ${calculo.hombres} hombres (${calculo.gramajes[0]} g), ${calculo.mujeres} mujeres (${calculo.gramajes[1]} g), ${calculo.ninos} niños (${calculo.gramajes[2]} g), ${calculo.sinPerfil} sin perfil (${calculo.gramosSinPerfil} g). Carne cruda.`,
+    `Carne total sugerida: ${formatearCompraKg(calculo.kgCarneTotal)} (${calculo.porciones} porciones de carne cruda)`,
+    ...obtenerLista(calculo).map((item) => `${item.nombre}: ${item.cantidad}${item.comprado ? ' (comprado)' : ''}`),
+    Object.keys(calculo.listaEdiciones).length || calculo.listaPersonalizados.length
+      ? 'Lista personalizada: el presupuesto corresponde a las cantidades sugeridas, no a las editadas.' : null,
     `${calculo.presupuestoCompleto ? 'Costo total' : 'Subtotal cargado'}: ${formatearMoneda(calculo.totalEstimado)}`,
     calculo.pagadores > 0 ? `Por cabeza: ${formatearMoneda(calculo.costoPorCabeza)} (redondeado ↑)${calculo.presupuestoCompleto ? '' : ' · Provisorio'}` : 'Sin pagadores: costo por persona no disponible.',
     !calculo.presupuestoCompleto ? `Faltan precios: ${calculo.preciosFaltantes.join(', ')}.` : null,

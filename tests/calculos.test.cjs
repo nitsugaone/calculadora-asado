@@ -64,6 +64,74 @@ function crearApp() {
   return { evaluar, nodos, memoria, pendientes, window };
 }
 
+test('los tipos de carne conservan el gramaje crudo salvo ajuste explicito', () => {
+  const { evaluar } = crearApp();
+  for (const tipo of ['premium', 'con_hueso', 'sin_hueso', 'cerdo', 'pollo', 'mixto_cerdo', 'mixto_pollo']) {
+    const c = evaluar(`calcularAsado({...ESTADO_INICIAL,tipoCarne:'${tipo}',hombres:4,mujeres:4,ninos:4})`);
+    assert.equal(c.kgCarneTotal, 6);
+    assert.equal(Math.round((c.kgVacio + c.kgTira + c.kgPollo + c.kgCerdo) * 10), 60);
+    assert.ok(c.rendimiento > 0 && c.rendimiento < 1);
+  }
+  const ajustado = evaluar("calcularAsado({...ESTADO_INICIAL,tipoCarne:'con_hueso',ajustarPorCorte:true,pagadores:1,hombres:1})");
+  assert.equal(ajustado.gramosCarneTotal, 880);
+  assert.equal(ajustado.kgTira, 0.9);
+});
+
+test('cordero se compra por medias reses exactas, sin redondear el precio a 6,3 kg', () => {
+  const { evaluar } = crearApp();
+  const c = evaluar("calcularAsado({...ESTADO_INICIAL,tipoCarne:'cordero',precioCordero:10000})");
+  assert.equal(c.mediasReses, 1);
+  assert.equal(c.kgCordero, 6.25);
+  assert.equal(c.detallePresupuesto.find((r) => r.nombre === 'Cordero').subtotal, 62500);
+  assert.equal(evaluar('formatearCompraKg(6.25)'), '6,25 kg');
+  assert.equal(evaluar("calcularAsado({...ESTADO_INICIAL,tipoCarne:'cordero',pagadores:13}).kgCordero"), 12.5);
+  assert.equal(evaluar("calcularAsado({...ESTADO_INICIAL,tipoCarne:'cordero',pagadores:0}).mediasReses"), 0);
+});
+
+test('cerdo y pollo usan precios propios y no exigen precio de vacuno', () => {
+  const { evaluar } = crearApp();
+  for (const [tipo, precio] of [['cerdo', 'precioCerdo'], ['pollo', 'precioPollo']]) {
+    const c = evaluar(`calcularAsado({...ESTADO_INICIAL,tipoCarne:'${tipo}',${precio}:1000,precioChorizo:0,precioMorcilla:0,precioCarbon:0,precioLena:0})`);
+    assert.equal(c.presupuestoCompleto, true);
+    assert.equal(c.totalEstimado, 6000);
+  }
+});
+
+test('bebidas son optativas, no generan compras vacias ni alcohol para ninos', () => {
+  const { evaluar } = crearApp();
+  assert.equal(evaluar('calcularAsado(ESTADO_INICIAL).bebidas.length'), 0);
+  assert.equal(evaluar('calcularAsado({...ESTADO_INICIAL,pagadores:0,incluirExtras:true}).bebidas.length'), 0);
+  const c = evaluar('calcularAsado({...ESTADO_INICIAL,ninos:12,incluirExtras:true,adultosBebedores:12})');
+  assert.ok(!c.bebidas.some((item) => ['cerveza', 'vino'].includes(item.id)));
+  assert.ok(c.preciosFaltantes.includes('Bebidas y acompañamientos'));
+  const adultos = evaluar('calcularAsado({...ESTADO_INICIAL,incluirExtras:true,adultosBebedores:4})');
+  assert.equal(adultos.bebidas.find((item) => item.id === 'cerveza').cantidad, 4.4);
+  assert.equal(adultos.bebidas.find((item) => item.id === 'vino').cantidad, 1);
+});
+
+test('lista editada se comparte y restaura sin alterar el presupuesto', () => {
+  const { evaluar, memoria } = crearApp();
+  evaluar(`aplicarEstadoFormulario({...ESTADO_INICIAL,tipoCarne:'cerdo',incluirExtras:true,listaEdiciones:{cerdo:{nombre:'Bondiola',cantidad:'8 kg',comprado:true},morcillas:{excluido:true}},listaPersonalizados:[{id:'personal_1_1',nombre:'Sal',cantidad:'1 paquete'}]})`);
+  const original = evaluar('calculoActual.totalEstimado');
+  const texto = evaluar('textoResumen(calculoActual)');
+  assert.match(texto, /Bondiola: 8 kg \(comprado\)/);
+  assert.match(texto, /Sal: 1 paquete/);
+  assert.doesNotMatch(texto, /Morcillas:/);
+  evaluar('guardarEstadoFormulario(); aplicarEstadoFormulario(ESTADO_INICIAL); restaurarEstadoFormulario()');
+  assert.equal(evaluar('calculoActual.tipoCarne'), 'cerdo');
+  assert.equal(evaluar('calculoActual.totalEstimado'), original);
+  assert.match(evaluar('textoResumen(calculoActual)'), /Bondiola: 8 kg/);
+  assert.ok(memoria.has('asadoProEstado'));
+});
+
+test('lista corrupta limita textos, descarta estructuras invalidas y no interpreta HTML', () => {
+  const { evaluar } = crearApp();
+  assert.equal(evaluar('normalizarEstado({listaEdiciones:[],listaPersonalizados:{}}).listaPersonalizados.length'), 0);
+  assert.equal(evaluar("normalizarEstado({listaEdiciones:{vacio:{nombre:'x'.repeat(1000)}}}).listaEdiciones.vacio.nombre.length"), 80);
+  const texto = evaluar(`textoResumen(calcularAsado({...ESTADO_INICIAL,listaEdiciones:{vacio:{nombre:'<img src=x onerror=alert(1)>',cantidad:'1 kg'}}}))`);
+  assert.match(texto, /<img src=x onerror=alert\(1\)>: 1 kg/);
+});
+
 test('cero personas no genera comida, combustible, bolsas ni presupuesto', () => {
   const { evaluar } = crearApp();
   const c = evaluar('calcularAsado({...ESTADO_INICIAL,pagadores:0,gratis:0,precioCarbon:2200,extras:5000})');

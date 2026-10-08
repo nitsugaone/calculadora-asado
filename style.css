@@ -1,5 +1,6 @@
 /*
   CHANGELOG
+  - Agregué selector de carnes y lista editable responsive con controles accesibles.
   - Agregué ajustes accesibles desde la tuerca, perfiles y reflujo sin espacios reservados.
   - Mejoré contraste, foco de inputs, presupuesto desglosado y lista imprimible sin recortes.
   - Reemplacé estilos dependientes de Tailwind/React por CSS vanilla.
@@ -47,8 +48,80 @@ body {
 }
 
 button,
-input {
+input,
+select {
   font: inherit;
+}
+
+select {
+  width: 100%;
+  min-width: 0;
+  min-height: 48px;
+  padding: 12px;
+  border: 1px solid var(--borde);
+  border-radius: 8px;
+  color: var(--texto);
+  background: var(--panel-2);
+}
+
+.opcion-check {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  min-height: 48px;
+  color: var(--texto);
+}
+
+.opcion-check input,
+.lista-editable__fila > input {
+  flex: 0 0 24px;
+  width: 24px;
+  height: 48px;
+  margin: 0;
+  accent-color: var(--acento);
+}
+
+.lista-editable {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+  min-width: 0;
+}
+
+.lista-editable__fila {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+  min-width: 0;
+  border-bottom: 1px solid var(--borde);
+  padding-bottom: 16px;
+}
+
+.lista-editable__campos {
+  display: grid;
+  gap: 8px;
+  min-width: 0;
+  flex: 1;
+}
+
+.lista-editable__campos input {
+  width: 100%;
+  min-width: 0;
+  min-height: 48px;
+  padding: 8px;
+  border: 1px solid var(--borde);
+  border-radius: 4px;
+  background: var(--fondo);
+  color: var(--texto);
+}
+
+#progresoLista {
+  color: var(--texto-suave);
+  font-size: 0.8rem;
+}
+
+@media (min-width: 480px) {
+  .lista-editable__campos { grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); }
 }
 
 button {

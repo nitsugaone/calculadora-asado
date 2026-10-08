@@ -13,6 +13,15 @@ JavaScript vanilla; no requiere instalación de paquetes ni compilación.
   gramajes por perfil. La compra se redondea hacia arriba a múltiplos de 100 g.
 - Validación si los perfiles superan el total: no se comparten ni guardan compras inválidas.
 - Desglose de vacío, tira y pollo con redondeos que suman el total mostrado.
+- Selección de vacuno con/sin hueso, cerdo, pollo y mezclas. Conserva por defecto
+  750/500/250 g crudos; el ajuste por rendimiento es optativo y muestra los gramajes
+  diferenciados. Los rendimientos son orientativos, no garantías de porción cocida.
+- Cordero por medias reses estimadas de 6,25 kg, conservando ese peso exacto para
+  presupuesto y lista. Confirmar el peso real con la carnicería.
+- Bebidas y acompañamientos optativos: agua, gaseosa, hielo, pan, ensalada, papas,
+  provoleta y chimichurri. Alcohol solo para los adultos declarados como bebedores.
+- Lista editable con progreso de compra, productos propios y eliminación de ítems;
+  comparte e imprime las ediciones, sin alterar el presupuesto calculado.
 - Chorizos, morcillas, carbón y leña; con cero personas no se generan compras.
 - Factor térmico aplicado a ambos combustibles:
   `1 + (0,02 × max(0, 15 - temperatura) + 0,015 × viento) × entorno`.
@@ -22,9 +31,10 @@ JavaScript vanilla; no requiere instalación de paquetes ni compilación.
 - Ajustes e historial desde la tuerca del encabezado, con acordeones para modo de
   compra, precios y asados guardados; navegación por teclado y cierre con Escape.
 - Precios separados para vacuno/kg, pollo/kg, chorizo/unidad, morcilla/unidad,
-  carbón/bolsa de 4 kg, leña/kg y otros gastos.
+  cerdo/kg, cordero/kg, carbón/bolsa de 4 kg, leña/kg y otros gastos.
 - Presupuesto desglosado: un campo vacío significa precio faltante; cero es un
-  precio válido. Los extras son opcionales. Si faltan precios se muestra un
+  precio válido. Bebidas y acompañamientos se cargan en Otros gastos; al activarlos
+  sin cargar ese monto se señala el faltante. Si faltan precios se muestra un
   subtotal provisorio, también al compartir la lista.
 - Costo dividido solo entre quienes pagan; sin pagadores no se muestra un costo
   por persona de cero.
@@ -45,11 +55,12 @@ modificar; no forman parte de la entrada estática vanilla de esta propuesta.
 
 ## Diferencias con la versión React de GitHub
 
-Esta migración todavía no tiene paridad funcional con el sitio React. No incluye
-el ajuste de carne por rendimiento de cada corte, cordero por medias reses, cerdo,
-achuras, bebidas y acompañamientos, lista editable con progreso, calibración por
-feedback ni enlaces con precios congelados. Los gramajes de esta propuesta son
-750/500/250 g crudos por perfil, no los gramajes diferenciados por corte de React.
+Esta migración recupera tipos de carne, rendimiento optativo, cordero, bebidas y
+lista editable. Todavía no incluye achuras, calibración por feedback ni enlaces
+con precios congelados. Tampoco migra el historial antiguo de React.
+Los gramajes iniciales son 750/500/250 g crudos por perfil; se puede activar el
+ajuste por corte. Los precios de bebidas y acompañamientos se cargan como un monto
+global en Otros gastos, no como precios unitarios.
 
 Se propone revisar estas diferencias antes de reemplazar la versión pública.
 Las pruebas se ejecutan también en pull requests; el despliegue de Pages solo se
@@ -70,5 +81,6 @@ node tests/navegador.cjs
 ```
 
 La prueba de navegador abre un servidor local temporal, verifica formularios,
-historial, perfiles, ajustes, reflujo de Quincho, impresión, cuatro tamaños de pantalla y recarga offline; cierra el servidor
+historial, perfiles, cortes, bebidas, lista editable, ajustes, reflujo de Quincho,
+impresión, cuatro tamaños de pantalla y recarga offline; cierra el servidor
 al finalizar. Las capturas se guardan en `.qa/`, fuera de la publicación.
