@@ -1,6 +1,7 @@
 <!doctype html>
 <!--
   CHANGELOG
+  - Agregué achuras optativas y confirmación antes de cargar un presupuesto compartido.
   - Recuperé selección de carnes, cordero, bebidas y lista editable en los ajustes.
   - Agregué perfiles de 750/500/250 g de carne cruda y resumen de personas sin perfil.
   - Moví modo de compra, precios e historial a ajustes con acordeones desde la tuerca.
@@ -155,6 +156,11 @@
           <button id="guardarAsado" type="button" class="boton">Guardar asado</button>
           <button id="compartirWhatsapp" type="button" class="boton boton--whatsapp">Compartir por WhatsApp</button>
           <button id="generarLista" type="button" class="boton boton--ghost">Generar lista de compras</button>
+          <button id="copiarEnlace" type="button" class="boton boton--ghost">Copiar enlace del asado</button>
+          <div id="salidaEnlace" class="campo" hidden>
+            <label for="enlaceGenerado">Enlace con precios guardados</label>
+            <div class="control-linea"><input id="enlaceGenerado" type="text" readonly /></div>
+          </div>
         </div>
       </section>
     </main>
@@ -192,6 +198,11 @@
             <label class="opcion-check"><input id="ajustarPorCorte" type="checkbox" />Ajustar gramajes según hueso y rendimiento</label>
             <p id="detalleCorte" class="ayuda" role="status"></p>
             <p class="ayuda">Cordero: compra por medias reses estimadas de 6,25 kg. Confirmá el peso real en carnicería.</p>
+            <div class="campo">
+              <label for="personasAchuras">Personas que comen achuras</label>
+              <div class="control-linea"><input id="personasAchuras" type="number" inputmode="numeric" pattern="[0-9]*" min="0" step="1" value="0" aria-describedby="detalleAchuras" /></div>
+              <p id="detalleAchuras" class="ayuda" role="status">120 g crudos por persona, adicionales a la carne principal.</p>
+            </div>
           </div>
         </details>
 
@@ -250,6 +261,10 @@
               <label for="precioMorcilla">Morcilla por unidad</label>
               <div class="control-linea"><span class="prefijo">$</span><input id="precioMorcilla" type="number" inputmode="numeric" min="0" step="1" placeholder="0" /></div>
             </div>
+            <div class="campo" id="campoPrecioAchuras">
+              <label for="precioAchuras">Achuras por kg</label>
+              <div class="control-linea"><span class="prefijo">$</span><input id="precioAchuras" type="number" inputmode="numeric" min="0" step="1" placeholder="0" /></div>
+            </div>
             <div class="campo">
               <label for="precioLena">Leña por kg</label>
               <div class="control-linea"><span class="prefijo">$</span><input id="precioLena" type="number" inputmode="numeric" min="0" step="1" placeholder="0" /></div>
@@ -278,6 +293,22 @@
       <div class="modal-lista__acciones">
         <button id="imprimirLista" type="button" class="boton">Imprimir</button>
         <button id="copiarLista" type="button" class="boton boton--ghost">Copiar</button>
+      </div>
+    </dialog>
+
+    <dialog id="modalCompartido" class="modal-ajustes" aria-labelledby="tituloCompartido" aria-describedby="avisoCompartido">
+      <div class="modal-ajustes__barra">
+        <h2 id="tituloCompartido">Asado compartido</h2>
+        <button id="cerrarCompartido" type="button" class="boton-cerrar" aria-label="Cerrar asado compartido" title="Cerrar">×</button>
+      </div>
+      <div class="ajustes-contenido">
+        <p id="resumenCompartido" class="resumen-comensales"></p>
+        <p id="fechaCompartido" class="ayuda"></p>
+        <p id="avisoCompartido" class="ayuda">Cargar reemplaza el formulario y restablece la lista sugerida. Tu historial no se elimina. Los precios del enlace son editables y no se actualizan desde internet.</p>
+        <div class="acciones">
+          <button id="aceptarCompartido" type="button" class="boton">Cargar asado compartido</button>
+          <button id="cancelarCompartido" type="button" class="boton boton--ghost">Conservar mi asado</button>
+        </div>
       </div>
     </dialog>
 

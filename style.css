@@ -1,5 +1,6 @@
 /*
   CHANGELOG
+  - Reutilicé el diálogo de ajustes para confirmar enlaces y conservar foco accesible.
   - Agregué selector de carnes y lista editable responsive con controles accesibles.
   - Agregué ajustes accesibles desde la tuerca, perfiles y reflujo sin espacios reservados.
   - Mejoré contraste, foco de inputs, presupuesto desglosado y lista imprimible sin recortes.
@@ -119,6 +120,9 @@ select {
   color: var(--texto-suave);
   font-size: 0.8rem;
 }
+
+#salidaEnlace { min-width: 0; width: 100%; }
+#resumenCompartido { margin: 0; overflow-wrap: anywhere; }
 
 @media (min-width: 480px) {
   .lista-editable__campos { grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); }

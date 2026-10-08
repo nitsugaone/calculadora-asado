@@ -19,6 +19,8 @@ function crearApp() {
     replaceChildren(...hijos) { this.children = hijos; },
     insertBefore(hijo) { this.children.push(hijo); },
     setAttribute() {}, addEventListener() {},
+    focus() {}, select() {},
+    showModal() { this.open = true; }, close() { this.open = false; },
   });
   const radios = {
     modoCompra: ['premium', 'economico'].map((value, i) => ({ value, checked: i === 0 })),
@@ -48,6 +50,7 @@ function crearApp() {
     createTextNode: (texto) => ({ textContent: texto }),
   };
   const window = {
+    location: new URL('https://ejemplo.test/calculadora-asado/'),
     localStorage: {
       getItem: (clave) => memoria.get(clave) ?? null,
       setItem: (clave, valor) => memoria.set(clave, valor),
@@ -57,12 +60,103 @@ function crearApp() {
     setTimeout: (accion) => { pendientes.set(++indice, accion); return indice; },
     open: (url) => { window.ultimaUrl = url; },
   };
-  const contexto = vm.createContext({ document, window, Intl, URL });
+  window.history = { state: null, replaceState(_estado, _titulo, url) { window.location = new URL(url); } };
+  const navigator = { clipboard: { async writeText(texto) { window.ultimoTexto = texto; } } };
+  const contexto = vm.createContext({ document, window, navigator, Intl, URL, TextEncoder, TextDecoder, btoa, atob });
   vm.runInContext(fuente.slice(0, fuente.lastIndexOf('\nconfigurarEventos();')), contexto);
   const evaluar = (codigo) => vm.runInContext(codigo, contexto);
   evaluar('aplicarEstadoFormulario(ESTADO_INICIAL)');
   return { evaluar, nodos, memoria, pendientes, window };
 }
+
+test('achuras son optativas, adicionales y presupuestadas por su propio precio', () => {
+  const { evaluar } = crearApp();
+  const base = evaluar('calcularAsado(ESTADO_INICIAL)');
+  const c = evaluar('calcularAsado({...ESTADO_INICIAL,personasAchuras:8,precioAchuras:7000})');
+  assert.equal(base.kgAchuras, 0);
+  assert.equal(c.kgAchuras, 1);
+  assert.equal(c.kgCarneTotal, base.kgCarneTotal);
+  assert.ok(c.carbonKg >= base.carbonKg && c.lenaKg >= base.lenaKg);
+  assert.equal(c.detallePresupuesto.find((item) => item.nombre === 'Achuras').subtotal, 7000);
+  assert.match(evaluar('textoResumen(calcularAsado({...ESTADO_INICIAL,personasAchuras:8}))'), /Achuras: 1,0 kg/);
+  assert.ok(evaluar('calcularAsado({...ESTADO_INICIAL,personasAchuras:8}).preciosFaltantes.includes("Achuras")'));
+});
+
+test('achuras no superan comensales ni generan compras con perfiles invalidos o cero personas', () => {
+  const { evaluar } = crearApp();
+  assert.equal(evaluar('calcularAsado({...ESTADO_INICIAL,personasAchuras:30}).consumidoresAchuras'), 12);
+  assert.equal(evaluar('calcularAsado({...ESTADO_INICIAL,pagadores:0,personasAchuras:12}).kgAchuras'), 0);
+  assert.equal(evaluar('calcularAsado({...ESTADO_INICIAL,hombres:20,personasAchuras:12}).kgAchuras'), 0);
+});
+
+test('enlaces conservan configuracion y precios exactos, pero excluyen lista e historial', () => {
+  const { evaluar } = crearApp();
+  const datos = evaluar(`decodificarAsadoCompartido(codificarAsadoCompartido({...ESTADO_INICIAL,pagadores:8,gratis:4,precioCarne:12345,precioCarbon:0,personasAchuras:5,precioAchuras:6000,listaPersonalizados:[{id:'personal_1',nombre:'Texto privado',cantidad:'1'}]}))`);
+  assert.equal(datos.estado.precioCarne, 12345);
+  assert.equal(datos.estado.precioCarbon, 0);
+  assert.equal(datos.estado.precioPollo, '');
+  assert.equal(datos.estado.personasAchuras, 5);
+  assert.equal(datos.estado.listaPersonalizados.length, 0);
+  const url = evaluar('generarUrlCompartible(ESTADO_INICIAL)');
+  assert.match(url, /^https:\/\/ejemplo\.test\/calculadora-asado\/#asado=/);
+  assert.equal(new URL(url).search, '');
+  assert.doesNotMatch(evaluar('atob(codificarAsadoCompartido(ESTADO_INICIAL).replace(/-/g,"+").replace(/_/g,"/"))'), /lista|historial/i);
+});
+
+test('enlaces corruptos, versiones desconocidas y precios invalidos se rechazan', () => {
+  const { evaluar } = crearApp();
+  for (const texto of ["''", "'%'", "'a'.repeat(12001)", "'bm90LWpzb24'"]) {
+    assert.equal(evaluar(`decodificarAsadoCompartido(${texto})`), null);
+  }
+  const base = '{version:1,fecha:"2026-10-08T15:00:00.000Z",estado:{...ESTADO_INICIAL}}';
+  for (const cambio of ['version:2', 'fecha:"mala"', 'estado:{...ESTADO_INICIAL,precioCarne:-1}',
+    'estado:{...ESTADO_INICIAL,precioCarne:"12.5"}', 'estado:{...ESTADO_INICIAL,modo:"inventado"}',
+    'estado:{...ESTADO_INICIAL,temperatura:99}', 'estado:{...ESTADO_INICIAL,hombres:99}',
+    'estado:{...ESTADO_INICIAL,pagadores:0}', 'estado:{...ESTADO_INICIAL,pagadores:10001}']) {
+    assert.equal(evaluar(`validarDatosCompartidos({...${base},${cambio}})`), null, cambio);
+  }
+});
+
+test('abrir y cancelar un enlace no modifica formulario ni almacenamiento', () => {
+  const { evaluar, memoria, window } = crearApp();
+  evaluar('guardarEstadoFormulario()');
+  const guardado = memoria.get('asadoProEstado');
+  evaluar(`window.location.hash = '#asado=' + codificarAsadoCompartido({...ESTADO_INICIAL,pagadores:20,precioCarne:10000}); ofrecerAsadoCompartido()`);
+  assert.equal(evaluar('calculoActual.pagadores'), 12);
+  assert.equal(evaluar('elementos.modalCompartido.open'), true);
+  assert.equal(memoria.get('asadoProEstado'), guardado);
+  evaluar('cancelarAsadoCompartido()');
+  assert.equal(window.location.hash, '');
+  assert.equal(evaluar('calculoActual.pagadores'), 12);
+  assert.equal(memoria.get('asadoProEstado'), guardado);
+});
+
+test('confirmar un enlace restaura precios, limpia ediciones y conserva el historial', () => {
+  const { evaluar, memoria, window } = crearApp();
+  memoria.set('asadoProHistorialVanilla', '[{"conservar":true}]');
+  evaluar(`aplicarEstadoFormulario({...ESTADO_INICIAL,listaEdiciones:{vacio:{cantidad:'9 kg'}}});
+    window.location.hash = '#asado=' + codificarAsadoCompartido({...ESTADO_INICIAL,pagadores:20,personasAchuras:7,precioCarne:10000,precioAchuras:7000});
+    ofrecerAsadoCompartido(); aceptarAsadoCompartido()`);
+  assert.equal(evaluar('calculoActual.pagadores'), 20);
+  assert.equal(evaluar('calculoActual.precioAchuras'), 7000);
+  assert.equal(evaluar('Object.keys(calculoActual.listaEdiciones).length'), 0);
+  assert.equal(memoria.get('asadoProHistorialVanilla'), '[{"conservar":true}]');
+  assert.equal(JSON.parse(memoria.get('asadoProEstado')).precioCarne, 10000);
+  assert.equal(window.location.hash, '');
+});
+
+test('copiar enlace falla con feedback visible y nunca comparte rutas locales', async () => {
+  const { evaluar, nodos, window } = crearApp();
+  evaluar('navigator.clipboard.writeText = async () => { throw new Error("Sin permiso"); }');
+  await evaluar('copiarEnlaceAsado()');
+  assert.equal(nodos.get('#salidaEnlace').hidden, false);
+  assert.match(nodos.get('#enlaceGenerado').value, /#asado=/);
+  assert.match(nodos.get('#estadoGuardado').textContent, /No se pudo copiar/);
+  window.location = new URL('file:///C:/privado/asado/index.html');
+  await evaluar('copiarEnlaceAsado()');
+  assert.equal(nodos.get('#salidaEnlace').hidden, true);
+  assert.match(nodos.get('#estadoGuardado').textContent, /HTTP o HTTPS/);
+});
 
 test('los tipos de carne conservan el gramaje crudo salvo ajuste explicito', () => {
   const { evaluar } = crearApp();

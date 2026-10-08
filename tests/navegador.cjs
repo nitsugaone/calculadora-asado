@@ -133,6 +133,12 @@ const permitidos = new Set(['index.html', 'script.js', 'style.css', 'sw.js', 'pu
     await pagina.locator('#tipoCarne').selectOption('cerdo');
     await pagina.locator('#precioCerdo').fill('9000');
     await pagina.locator('#precioCerdo').blur();
+    await pagina.locator('#personasAchuras').fill('6');
+    await pagina.locator('#personasAchuras').blur();
+    await pagina.locator('#precioAchuras').fill('6000');
+    await pagina.locator('#precioAchuras').blur();
+    await pagina.locator('#extras').fill('2000');
+    await pagina.locator('#extras').blur();
     await pagina.locator('#ajustesBebidas summary').click();
     await pagina.locator('#incluirExtras').check();
     await pagina.locator('#adultosBebedores').fill('4');
@@ -157,6 +163,7 @@ const permitidos = new Set(['index.html', 'script.js', 'style.css', 'sw.js', 'pu
     assert.match(listaEditada, /Bondiola: 8 kg \(comprado\)/);
     assert.match(listaEditada, /Sal: 1 paquete/);
     assert.match(listaEditada, /Cerveza: 4,4 l/);
+    assert.match(listaEditada, /Achuras: 0,8 kg/);
     assert.match(listaEditada, /presupuesto corresponde a las cantidades sugeridas/);
     await pagina.locator('#cerrarLista').click();
     await pagina.locator('#abrirAjustes').click();
@@ -166,11 +173,51 @@ const permitidos = new Set(['index.html', 'script.js', 'style.css', 'sw.js', 'pu
     await pagina.locator('.btn-cargar').first().click();
     assert.equal(await pagina.locator('#tipoCarne').inputValue(), 'cerdo');
     assert.equal(await pagina.locator('#incluirExtras').isChecked(), true);
+    assert.equal(await pagina.locator('#personasAchuras').inputValue(), '6');
+    assert.equal(await pagina.locator('#precioAchuras').inputValue(), '6000');
     await pagina.locator('#abrirAjustes').click();
     await pagina.locator('#ajustesLista summary').click();
     await personalizado.locator('button').click();
     assert.equal(await personalizado.count(), 0);
     await pagina.locator('#cerrarAjustes').click();
+
+    // El enlace guarda precios, no textos de la lista, y requiere decisión explícita.
+    await pagina.evaluate(() => Object.defineProperty(navigator, 'clipboard', { configurable: true,
+      value: { writeText: async (texto) => { window.enlaceCopiadoPrueba = texto; } } }));
+    await pagina.locator('#copiarEnlace').click();
+    await pagina.getByRole('button', { name: 'Enlace copiado', exact: true }).waitFor();
+    const enlace = await pagina.locator('#enlaceGenerado').inputValue();
+    assert.equal(await pagina.evaluate(() => window.enlaceCopiadoPrueba), enlace);
+    assert.match(enlace, /\/calculadora-asado\/#asado=/);
+    await pagina.locator('#personasPagas').fill('16');
+    await pagina.locator('#personasPagas').blur();
+    const estadoAntesDelEnlace = await pagina.evaluate(() => localStorage.getItem('asadoProEstado'));
+    await pagina.goto(enlace);
+    await pagina.locator('#modalCompartido').waitFor({ state: 'visible' });
+    assert.equal(await pagina.locator('#personasPagas').inputValue(), '16');
+    assert.equal(await pagina.evaluate(() => localStorage.getItem('asadoProEstado')), estadoAntesDelEnlace);
+    await pagina.locator('#cancelarCompartido').click();
+    assert.equal(new URL(pagina.url()).hash, '');
+    assert.equal(await pagina.locator('#personasPagas').inputValue(), '16');
+    await pagina.goto(enlace);
+    await pagina.locator('#modalCompartido').waitFor({ state: 'visible' });
+    await pagina.keyboard.press('Escape');
+    await pagina.waitForFunction(() => !location.hash);
+    assert.equal(await pagina.locator('#personasPagas').inputValue(), '16');
+    await pagina.goto(enlace);
+    await pagina.locator('#aceptarCompartido').click();
+    await pagina.waitForFunction(() => !location.hash);
+    assert.equal(await pagina.locator('#personasPagas').inputValue(), '8');
+    assert.equal(await pagina.locator('#precioCerdo').inputValue(), '9000');
+    assert.equal(await pagina.locator('#precioAchuras').inputValue(), '6000');
+    await pagina.locator('#generarLista').click();
+    assert.doesNotMatch(await pagina.locator('#contenidoLista').textContent(), /Bondiola/);
+    await pagina.locator('#cerrarLista').click();
+    await pagina.reload();
+    assert.equal(await pagina.locator('#modalCompartido').isVisible(), false);
+    await pagina.goto(`${enlace.split('#')[0]}#asado=corrupto`);
+    await pagina.getByText('Enlace inválido o incompatible.', { exact: false }).waitFor();
+    assert.equal(await pagina.locator('#personasPagas').inputValue(), '8');
 
     await pagina.locator('#abrirAjustes').click();
     await pagina.locator('#btnReset').click();
@@ -206,6 +253,11 @@ const permitidos = new Set(['index.html', 'script.js', 'style.css', 'sw.js', 'pu
       assert.equal(await pagina.locator('#modalAjustes').evaluate((nodo) => nodo.scrollWidth <= nodo.clientWidth), true);
       await pagina.screenshot({ path: path.join(raiz, '.qa', `${nombre}-lista.png`) });
       await pagina.keyboard.press('Escape');
+      await pagina.goto(enlace);
+      await pagina.locator('#modalCompartido').waitFor({ state: 'visible' });
+      assert.equal(await pagina.locator('#modalCompartido').evaluate((nodo) => nodo.scrollWidth <= nodo.clientWidth), true);
+      await pagina.screenshot({ path: path.join(raiz, '.qa', `${nombre}-compartido.png`) });
+      await pagina.locator('#cancelarCompartido').click();
       await pagina.locator('input[value="chulengo"]').check();
       assert.equal(await pagina.locator('.panel--resultados #presupuestoAsado').count(), 1);
     }
@@ -216,9 +268,16 @@ const permitidos = new Set(['index.html', 'script.js', 'style.css', 'sw.js', 'pu
     await pagina.locator('#personasPagas').blur();
     await pagina.locator('#resumenComensales').getByText('20 personas comen').waitFor();
     assert.equal(await pagina.locator('#estadoConexion').textContent(), 'Modo offline');
+    await pagina.goto(enlace);
+    await pagina.locator('#modalCompartido').waitFor({ state: 'visible' });
+    await pagina.reload();
+    await pagina.locator('#aceptarCompartido').click();
+    assert.equal(await pagina.locator('#precioAchuras').inputValue(), '6000');
+    assert.equal(await pagina.locator('#personasPagas').inputValue(), '8');
+    assert.equal(await pagina.locator('#estadoConexion').textContent(), 'Modo offline');
     assert.deepEqual(errores, []);
     assert.equal(consultasClima, 0);
-    console.log('OK: cortes, rendimiento, cordero, bebidas, lista editable sin XSS ni pérdida de foco, historial, perfiles, impresión, Quincho, 4 tamaños y offline. Sin errores JS ni consultas automáticas de clima.');
+    console.log('OK: achuras, enlaces con precios guardados, confirmación/cancelación/Escape, enlaces corruptos y recarga offline; cortes, bebidas, lista, historial, perfiles e impresión en 4 tamaños. Sin errores JS ni consultas automáticas de clima.');
   } finally {
     await navegador?.close();
     servidor.closeAllConnections();

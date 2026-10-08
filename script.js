@@ -1,5 +1,6 @@
 /*
   CHANGELOG
+  - Agregué achuras optativas y enlaces versionados con validación y confirmación de carga.
   - Recuperé cortes, rendimiento opcional, cordero por media res y bebidas.
   - Agregué lista editable persistente compartida con impresión e historial.
   - Recuperé perfiles de carne cruda, independientes del modo de compra y del reparto de gastos.
@@ -42,6 +43,7 @@ const ESTADO_INICIAL = {
   panGeneroso: false,
   ensaladaAbundante: false,
   adultosBebedores: 0,
+  personasAchuras: 0,
   listaEdiciones: {},
   listaPersonalizados: [],
   entorno: 'chulengo',
@@ -54,13 +56,14 @@ const ESTADO_INICIAL = {
   precioCordero: '',
   precioChorizo: '',
   precioMorcilla: '',
+  precioAchuras: '',
   precioLena: '',
   extras: '',
 };
 
 const CLAVES_PRECIOS = [
   'precioCarne', 'precioCarbon', 'precioPollo', 'precioChorizo',
-  'precioMorcilla', 'precioLena', 'precioCerdo', 'precioCordero', 'extras',
+  'precioMorcilla', 'precioAchuras', 'precioLena', 'precioCerdo', 'precioCordero', 'extras',
 ];
 
 // Rendimientos orientativos y gramajes recuperados de la versión avanzada.
@@ -76,10 +79,14 @@ const TIPOS_CARNE = {
   mixto_pollo: { etiqueta: 'Vacuno + pollo', mix: [0.25, 0.35, 0.4, 0], gramos: [760, 520, 260], rendimiento: 0.7025 },
   cordero: { etiqueta: 'Cordero patagónico', mix: [0, 0, 0, 0], gramos: [950, 650, 330], rendimiento: 0.55 },
 };
-const CLAVES_OPCIONES = ['tipoCarne', 'ajustarPorCorte', 'incluirExtras', 'panGeneroso', 'ensaladaAbundante', 'adultosBebedores'];
+const CLAVES_OPCIONES = ['tipoCarne', 'ajustarPorCorte', 'incluirExtras', 'panGeneroso', 'ensaladaAbundante', 'adultosBebedores', 'personasAchuras'];
 const CLAVES_CHECKS = ['ajustarPorCorte', 'incluirExtras', 'panGeneroso', 'ensaladaAbundante'];
 let listaEdiciones = {};
 let listaPersonalizados = [];
+let asadoCompartidoPendiente = null;
+const VERSION_ENLACE = 1;
+const MAXIMO_ENLACE = 12000;
+const CLAVES_ENLACE = Object.keys(ESTADO_INICIAL).filter((clave) => !clave.startsWith('lista'));
 
 const MODOS_COMPRA = {
   premium: {
@@ -131,6 +138,7 @@ const elementos = {
   precioCordero: $('#precioCordero'),
   precioChorizo: $('#precioChorizo'),
   precioMorcilla: $('#precioMorcilla'),
+  precioAchuras: $('#precioAchuras'),
   precioLena: $('#precioLena'),
   detallePresupuesto: $('#detallePresupuesto'),
   totalPresupuesto: $('#totalPresupuesto'),
@@ -147,6 +155,8 @@ const elementos = {
   mensajeClima: $('#mensajeClima'),
   guardarAsado: $('#guardarAsado'),
   compartirWhatsapp: $('#compartirWhatsapp'),
+  copiarEnlace: $('#copiarEnlace'),
+  modalCompartido: $('#modalCompartido'),
   generarLista: $('#generarLista'),
   historialAsados: $('#historialAsados'),
   actualizarPronostico: $('#actualizarPronostico'),
@@ -218,6 +228,7 @@ function normalizarEstado(datos) {
     ...Object.fromEntries(CLAVES_CHECKS.map((clave) => [clave, estado[clave] === true
       && (clave !== 'ajustarPorCorte' || Object.hasOwn(TIPOS_CARNE, estado.tipoCarne) && estado.tipoCarne !== 'automatico')])),
     adultosBebedores: parsearEnteroPositivo(estado.adultosBebedores),
+    personasAchuras: parsearEnteroPositivo(estado.personasAchuras),
     ...normalizarLista(estado),
     entorno: Object.hasOwn(COEFICIENTE_ENTORNO, estado.entorno) ? estado.entorno : ESTADO_INICIAL.entorno,
     temperatura: clima('temperatura', -15, 35),
@@ -265,6 +276,7 @@ function obtenerEstado() {
     tipoCarne: elementos.tipoCarne.value,
     ...Object.fromEntries(CLAVES_CHECKS.map((clave) => [clave, elementos[clave].checked])),
     adultosBebedores: elementos.adultosBebedores.value,
+    personasAchuras: elementos.personasAchuras.value,
     listaEdiciones,
     listaPersonalizados,
     entorno,
@@ -311,9 +323,13 @@ function calcularAsado(estado) {
     : (kgVacio * 0.93 + kgTira * 0.6 + kgPollo * 0.65 + kgCerdo * 0.9) / kgCarneTotal;
   const chorizos = hayComensales ? Math.ceil(totalPersonas * modo.chorizosPorPersona) : 0;
   const morcillas = hayComensales ? Math.ceil(totalPersonas * 0.35) : 0;
+  // Achuras optativas: 120 g crudos adicionales por consumidor explícito,
+  // limitados al total de comensales; compra redondeada hacia arriba a 100 g.
+  const consumidoresAchuras = hayComensales ? Math.min(estado.personasAchuras, totalPersonas) : 0;
+  const kgAchuras = Math.ceil(consumidoresAchuras * 120 / 100) / 10;
   const factorTermico = calcularFactorTermico(estado.temperatura, estado.viento, estado.entorno);
-  const carbonBaseKg = hayComensales ? Math.max(3, kgCarneTotal * 0.95 + chorizos * 0.06) : 0;
-  const lenaBaseKg = hayComensales ? Math.max(2, kgCarneTotal * 0.48) : 0;
+  const carbonBaseKg = hayComensales ? Math.max(3, (kgCarneTotal + kgAchuras) * 0.95 + chorizos * 0.06) : 0;
+  const lenaBaseKg = hayComensales ? Math.max(2, (kgCarneTotal + kgAchuras) * 0.48) : 0;
   const carbonKg = redondear(carbonBaseKg * factorTermico, 1);
   const lenaKg = redondear(lenaBaseKg * factorTermico, 1);
   const bolsasCarbon = Math.ceil(carbonKg / 4);
@@ -325,6 +341,7 @@ function calcularAsado(estado) {
     ['Cordero', kgCordero, 'precioCordero'],
     ['Chorizos', chorizos, 'precioChorizo'],
     ['Morcillas', morcillas, 'precioMorcilla'],
+    ['Achuras', kgAchuras, 'precioAchuras'],
     ['Carbón', bolsasCarbon, 'precioCarbon'],
     ['Leña', lenaKg, 'precioLena'],
   ];
@@ -366,6 +383,8 @@ function calcularAsado(estado) {
     bebidas: calcularBebidas(estado, hayComensales ? totalPersonas : 0),
     chorizos,
     morcillas,
+    consumidoresAchuras,
+    kgAchuras,
     factorTermico: redondear(factorTermico, 2),
     carbonKg,
     lenaKg,
@@ -455,6 +474,7 @@ function itemsSugeridos(calculo) {
   return [...carnes,
     { id: 'chorizos', nombre: 'Chorizos', cantidad: `${FORMATO_AR.format(calculo.chorizos)} unidades` },
     { id: 'morcillas', nombre: 'Morcillas', cantidad: `${FORMATO_AR.format(calculo.morcillas)} unidades` },
+    ...(calculo.kgAchuras ? [{ id: 'achuras', nombre: 'Achuras', cantidad: formatearKg(calculo.kgAchuras) }] : []),
     { id: 'carbon', nombre: 'Carbón', cantidad: `${formatearKg(calculo.carbonKg)} (${FORMATO_AR.format(calculo.bolsasCarbon)} bolsas)` },
     { id: 'lena', nombre: 'Leña', cantidad: formatearKg(calculo.lenaKg) },
     ...calculo.bebidas.map((item) => ({ id: item.id, nombre: item.nombre, cantidad: `${formatearDecimal(item.cantidad)} ${item.unidad}` })),
@@ -527,6 +547,7 @@ function crearNodo(etiqueta, clase, texto) {
 
 function crearCard({ emoji, alt, titulo, valor, detalle }) {
   const card = crearNodo('article', 'card-resultado');
+  card.dataset.rubro = titulo;
   const arriba = crearNodo('div', 'card-resultado__arriba');
   const tituloNodo = crearNodo('div', 'card-resultado__titulo', titulo);
   const emojiNodo = crearNodo('span', 'card-resultado__emoji', emoji);
@@ -541,6 +562,9 @@ function crearCard({ emoji, alt, titulo, valor, detalle }) {
 }
 
 function renderizarResultados(calculo) {
+  $('#campoPrecioAchuras').hidden = calculo.kgAchuras === 0;
+  elementos.personasAchuras.max = String(calculo.totalPersonas);
+  $('#detalleAchuras').textContent = `120 g crudos por persona, adicionales a la carne principal. Se computan ${FORMATO_AR.format(calculo.consumidoresAchuras)} comensales${calculo.personasAchuras > calculo.totalPersonas ? ' (limitados al total del asado)' : ''}.`;
   $('#campoPrecioCarne').hidden = calculo.kgVacio + calculo.kgTira === 0;
   $('#campoPrecioPollo').hidden = calculo.kgPollo === 0;
   $('#campoPrecioCerdo').hidden = calculo.kgCerdo === 0;
@@ -554,6 +578,7 @@ function renderizarResultados(calculo) {
   elementos.guardarAsado.disabled = deshabilitar;
   elementos.compartirWhatsapp.disabled = deshabilitar;
   elementos.generarLista.disabled = deshabilitar;
+  elementos.copiarEnlace.disabled = deshabilitar;
   elementos.detallePresupuesto.replaceChildren();
   elementos.totalPresupuesto.replaceChildren();
   elementos.presupuestoAsado.hidden = deshabilitar;
@@ -621,6 +646,10 @@ function renderizarResultados(calculo) {
 
   if (!calculo.kgTira) cards.splice(2, 1);
   if (!calculo.kgVacio) cards.splice(1, 1);
+  if (calculo.kgAchuras) {
+    const indice = cards.findIndex((card) => card.dataset.rubro === 'Morcillas');
+    cards.splice(indice + 1, 0, crearCard({ emoji: '🍢', alt: 'Achuras', titulo: 'Achuras', valor: formatearKg(calculo.kgAchuras), detalle: `${calculo.consumidoresAchuras} comensales · adicionales a la carne principal` }));
+  }
   if (calculo.kgCerdo) cards.push(crearCard({ emoji: '🥩', alt: 'Cerdo', titulo: 'Cerdo', valor: formatearKg(calculo.kgCerdo), detalle: 'carne cruda sugerida' }));
   if (calculo.kgCordero) cards.push(crearCard({ emoji: '🍖', alt: 'Cordero', titulo: 'Cordero', valor: formatearCompraKg(calculo.kgCordero), detalle: `${calculo.mediasReses} medias reses estimadas de 6,25 kg` }));
   calculo.bebidas.forEach((item) => cards.push(crearCard({ emoji: item.emoji, alt: item.nombre, titulo: item.nombre,
@@ -726,6 +755,8 @@ function renderizarIndicadores(calculo) {
 }
 
 function actualizarTodo() {
+  $('#salidaEnlace').hidden = true;
+  $('#enlaceGenerado').value = '';
   sincronizarSlider();
   const estado = obtenerEstado();
   calculoActual = calcularAsado(estado);
@@ -795,6 +826,7 @@ function aplicarEstadoFormulario(estado) {
   CLAVES_PRECIOS.forEach((clave) => { elementos[clave].value = String(estado[clave]); });
   elementos.tipoCarne.value = estado.tipoCarne;
   elementos.adultosBebedores.value = String(estado.adultosBebedores);
+  elementos.personasAchuras.value = String(estado.personasAchuras);
   CLAVES_CHECKS.forEach((clave) => { elementos[clave].checked = estado[clave]; });
   listaEdiciones = estado.listaEdiciones;
   listaPersonalizados = estado.listaPersonalizados;
@@ -840,7 +872,7 @@ function bloquearPegadoNoEntero(evento) {
 
 function prepararInputs() {
   [elementos.personasPagas, elementos.invitadosGratis,
-    elementos.adultosBebedores, ...CLAVES_PERFILES.map((clave) => elementos[clave])].forEach((input) => {
+    elementos.adultosBebedores, elementos.personasAchuras, ...CLAVES_PERFILES.map((clave) => elementos[clave])].forEach((input) => {
     input.addEventListener('input', debounceRender);
     input.addEventListener('blur', () => {
       normalizarCampoEntero(input);
@@ -1022,8 +1054,131 @@ function textoResumen(calculo) {
 function compartirPorWhatsapp() {
   confirmarCambios();
   if (!calculoActual.totalPersonas || !calculoActual.perfilesValidos) return;
-  const url = `https://wa.me/?text=${encodeURIComponent(textoResumen(calculoActual))}`;
+  let resumen = textoResumen(calculoActual);
+  try {
+    resumen += `\nConfiguración y precios guardados (sin ediciones de lista):\n${generarUrlCompartible(obtenerEstado())}`;
+  } catch {
+    // En archivos locales se conserva el resumen: no se comparten rutas del equipo.
+  }
+  const url = `https://wa.me/?text=${encodeURIComponent(resumen)}`;
   window.open(url, '_blank', 'noopener,noreferrer');
+}
+
+// Un enlace es una instantánea editable, no un presupuesto firmado ni seguridad real.
+// Se permiten solo campos del formulario: nunca historial ni textos personales de la lista.
+function validarDatosCompartidos(datos) {
+  if (!datos || typeof datos !== 'object' || Array.isArray(datos) || datos.version !== VERSION_ENLACE
+    || typeof datos.fecha !== 'string' || datos.fecha.length > 30 || !Number.isFinite(Date.parse(datos.fecha))) return null;
+  const estado = datos.estado;
+  if (!estado || typeof estado !== 'object' || Array.isArray(estado)
+    || !CLAVES_ENLACE.every((clave) => Object.hasOwn(estado, clave))) return null;
+  const enteros = ['pagadores', 'gratis', ...CLAVES_PERFILES, 'adultosBebedores', 'personasAchuras'];
+  if (!enteros.every((clave) => Number.isSafeInteger(estado[clave]) && estado[clave] >= 0 && estado[clave] <= 10000)
+    || estado.pagadores + estado.gratis > 10000) return null;
+  if (!CLAVES_CHECKS.every((clave) => typeof estado[clave] === 'boolean')
+    || !Object.hasOwn(MODOS_COMPRA, estado.modo) || !Object.hasOwn(TIPOS_CARNE, estado.tipoCarne)
+    || !Object.hasOwn(COEFICIENTE_ENTORNO, estado.entorno)) return null;
+  if (!Number.isFinite(estado.temperatura) || estado.temperatura < -15 || estado.temperatura > 35
+    || !Number.isFinite(estado.viento) || estado.viento < 0 || estado.viento > 120) return null;
+  if (!CLAVES_PRECIOS.every((clave) => estado[clave] === ''
+    || Number.isSafeInteger(estado[clave]) && estado[clave] >= 0 && estado[clave] <= 1000000000)) return null;
+  const soloFormulario = Object.fromEntries(CLAVES_ENLACE.map((clave) => [clave, estado[clave]]));
+  const normalizado = normalizarEstado(soloFormulario);
+  const calculo = calcularAsado(normalizado);
+  if (!calculo.totalPersonas || !calculo.perfilesValidos) return null;
+  return { version: VERSION_ENLACE, fecha: datos.fecha, estado: normalizado };
+}
+
+// Base64url UTF-8 en el fragmento: no se envían los precios al servidor en la URL HTTP.
+function codificarAsadoCompartido(estado, fecha = new Date().toISOString()) {
+  const normalizado = normalizarEstado(estado);
+  const soloFormulario = Object.fromEntries(CLAVES_ENLACE.map((clave) => [clave, normalizado[clave]]));
+  const datos = { version: VERSION_ENLACE, fecha, estado: soloFormulario };
+  if (!validarDatosCompartidos(datos)) throw new Error('Datos fuera del rango permitido para compartir.');
+  const bytes = new TextEncoder().encode(JSON.stringify(datos));
+  const texto = btoa(Array.from(bytes, (byte) => String.fromCharCode(byte)).join(''))
+    .replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/g, '');
+  if (texto.length > MAXIMO_ENLACE) throw new Error('Enlace demasiado largo.');
+  return texto;
+}
+
+function decodificarAsadoCompartido(texto) {
+  try {
+    if (typeof texto !== 'string' || !texto.length || texto.length > MAXIMO_ENLACE || !/^[A-Za-z0-9_-]+$/.test(texto)) return null;
+    const binario = atob(texto.replace(/-/g, '+').replace(/_/g, '/'));
+    const bytes = Uint8Array.from(binario, (caracter) => caracter.charCodeAt(0));
+    const json = new TextDecoder('utf-8', { fatal: true }).decode(bytes);
+    return validarDatosCompartidos(JSON.parse(json));
+  } catch { return null; }
+}
+
+function generarUrlCompartible(estado) {
+  const url = new URL(window.location.href);
+  if (!['http:', 'https:'].includes(url.protocol)) throw new Error('El enlace requiere abrir la app mediante HTTP o HTTPS.');
+  url.search = '';
+  url.hash = `asado=${codificarAsadoCompartido(estado)}`;
+  return url.href;
+}
+
+// El fallback visible permite recuperar el enlace si no existe permiso de portapapeles.
+async function copiarEnlaceAsado() {
+  confirmarCambios();
+  if (!calculoActual.totalPersonas || !calculoActual.perfilesValidos) return;
+  let enlace;
+  try { enlace = generarUrlCompartible(obtenerEstado()); }
+  catch (error) { elementos.estadoGuardado.textContent = error.message; return; }
+  $('#enlaceGenerado').value = enlace;
+  $('#salidaEnlace').hidden = false;
+  const textoOriginal = 'Copiar enlace del asado';
+  try {
+    await navigator.clipboard.writeText(enlace);
+    elementos.copiarEnlace.textContent = 'Enlace copiado';
+  } catch {
+    elementos.estadoGuardado.textContent = 'No se pudo copiar. Enlace disponible.';
+    $('#enlaceGenerado').focus();
+    $('#enlaceGenerado').select();
+  }
+  window.setTimeout(() => { elementos.copiarEnlace.textContent = textoOriginal; }, 2000);
+}
+
+// Se elimina el fragmento al decidir, evitando reimportaciones al recargar o resetear.
+function limpiarEnlaceDeDireccion() {
+  if (!window.location.hash.startsWith('#asado=')) return;
+  const url = new URL(window.location.href);
+  url.hash = '';
+  window.history.replaceState(window.history.state, '', url.href);
+}
+
+function ofrecerAsadoCompartido() {
+  const fragmento = window.location.hash;
+  if (!fragmento.startsWith('#asado=')) return;
+  const texto = fragmento.slice('#asado='.length);
+  asadoCompartidoPendiente = decodificarAsadoCompartido(texto);
+  if (!asadoCompartidoPendiente) {
+    elementos.estadoGuardado.textContent = 'Enlace inválido o incompatible. Tu asado no se modificó.';
+    limpiarEnlaceDeDireccion();
+    if (elementos.modalCompartido.open) elementos.modalCompartido.close();
+    return;
+  }
+  const calculo = calcularAsado(asadoCompartidoPendiente.estado);
+  $('#resumenCompartido').textContent = `${FORMATO_AR.format(calculo.totalPersonas)} comensales · ${calculo.pagadores} pagan · ${TIPOS_CARNE[calculo.tipoCarne].etiqueta} · ${calculo.presupuestoCompleto ? 'Total' : 'Subtotal'} ${formatearMoneda(calculo.totalEstimado)}${calculo.presupuestoCompleto ? '' : ' (faltan precios)'}.`;
+  $('#fechaCompartido').textContent = `Precios guardados el ${new Intl.DateTimeFormat('es-AR', { dateStyle: 'short', timeStyle: 'short' }).format(new Date(asadoCompartidoPendiente.fecha))}.`;
+  if (!elementos.modalCompartido.open) elementos.modalCompartido.showModal();
+}
+
+function aceptarAsadoCompartido() {
+  if (!asadoCompartidoPendiente) return;
+  aplicarEstadoFormulario(asadoCompartidoPendiente.estado);
+  guardarEstadoFormulario();
+  elementos.modalCompartido.close();
+  asadoCompartidoPendiente = null;
+  limpiarEnlaceDeDireccion();
+}
+
+function cancelarAsadoCompartido() {
+  asadoCompartidoPendiente = null;
+  limpiarEnlaceDeDireccion();
+  if (elementos.modalCompartido.open) elementos.modalCompartido.close();
 }
 
 function abrirListaCompras() {
@@ -1189,6 +1344,12 @@ function configurarEventos() {
   prepararInputs();
   elementos.guardarAsado.addEventListener('click', guardarAsado);
   elementos.compartirWhatsapp.addEventListener('click', compartirPorWhatsapp);
+  elementos.copiarEnlace.addEventListener('click', copiarEnlaceAsado);
+  $('#aceptarCompartido').addEventListener('click', aceptarAsadoCompartido);
+  $('#cancelarCompartido').addEventListener('click', cancelarAsadoCompartido);
+  $('#cerrarCompartido').addEventListener('click', cancelarAsadoCompartido);
+  elementos.modalCompartido.addEventListener('close', cancelarAsadoCompartido);
+  window.addEventListener('hashchange', ofrecerAsadoCompartido);
   elementos.generarLista.addEventListener('click', abrirListaCompras);
   elementos.btnReset.addEventListener('click', resetearFormulario);
   elementos.cerrarLista.addEventListener('click', cerrarLista);
@@ -1203,4 +1364,5 @@ function configurarEventos() {
 configurarEventos();
 restaurarEstadoFormulario();
 renderizarHistorial();
+ofrecerAsadoCompartido();
 registrarServiceWorker();

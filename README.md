@@ -23,6 +23,9 @@ JavaScript vanilla; no requiere instalación de paquetes ni compilación.
 - Lista editable con progreso de compra, productos propios y eliminación de ítems;
   comparte e imprime las ediciones, sin alterar el presupuesto calculado.
 - Chorizos, morcillas, carbón y leña; con cero personas no se generan compras.
+- Achuras optativas: 120 g crudos adicionales por consumidor explícito, redondeados
+  hacia arriba a 100 g. Se limitan al total de comensales, tienen precio propio y
+  suman peso al combustible sin reducir la carne principal.
 - Factor térmico aplicado a ambos combustibles:
   `1 + (0,02 × max(0, 15 - temperatura) + 0,015 × viento) × entorno`.
 - Entornos: quincho 0%, chulengo 45% e intemperie 100% del impacto climático.
@@ -31,7 +34,7 @@ JavaScript vanilla; no requiere instalación de paquetes ni compilación.
 - Ajustes e historial desde la tuerca del encabezado, con acordeones para modo de
   compra, precios y asados guardados; navegación por teclado y cierre con Escape.
 - Precios separados para vacuno/kg, pollo/kg, chorizo/unidad, morcilla/unidad,
-  cerdo/kg, cordero/kg, carbón/bolsa de 4 kg, leña/kg y otros gastos.
+  cerdo/kg, cordero/kg, achuras/kg, carbón/bolsa de 4 kg, leña/kg y otros gastos.
 - Presupuesto desglosado: un campo vacío significa precio faltante; cero es un
   precio válido. Bebidas y acompañamientos se cargan en Otros gastos; al activarlos
   sin cargar ese monto se señala el faltante. Si faltan precios se muestra un
@@ -40,6 +43,14 @@ JavaScript vanilla; no requiere instalación de paquetes ni compilación.
   por persona de cero.
 - Historial de hasta 10 asados, con cargar y borrar; persistencia del formulario.
 - WhatsApp, copia y lista imprimible.
+- Enlaces versionados con configuración y precios guardados. Al abrirlos se muestra
+  una vista previa; solo confirmar reemplaza el formulario. Cancelar o Escape
+  conserva el estado actual. El historial y los textos de la lista no se comparten.
+  La lista sugerida se restablece al aceptar; no se importan ediciones personales.
+- Los enlaces usan el fragmento `#asado=` (no enviado al servidor HTTP), no son
+  cifrados ni firmados, y requieren HTTP/HTTPS; nunca exponen rutas de archivos locales.
+  Admiten hasta 10.000 comensales y precios enteros de hasta $1.000.000.000 por campo.
+  Los precios quedan guardados en ese enlace, pero el destinatario puede editarlos.
 - Pronóstico Open-Meteo de temperatura y viento, consultado solo bajo demanda.
 - PWA offline después de la primera carga completa por HTTPS o localhost.
   Las actualizaciones se activan desde el botón que aparece cuando hay una nueva versión.
@@ -56,8 +67,9 @@ modificar; no forman parte de la entrada estática vanilla de esta propuesta.
 ## Diferencias con la versión React de GitHub
 
 Esta migración recupera tipos de carne, rendimiento optativo, cordero, bebidas y
-lista editable. Todavía no incluye achuras, calibración por feedback ni enlaces
-con precios congelados. Tampoco migra el historial antiguo de React.
+lista editable, achuras y enlaces con precios guardados. Todavía no incluye
+calibración por feedback. Tampoco migra el historial antiguo de React ni interpreta
+los enlaces antiguos `?state=`; los nuevos usan `#asado=` y requieren esta versión vanilla.
 Los gramajes iniciales son 750/500/250 g crudos por perfil; se puede activar el
 ajuste por corte. Los precios de bebidas y acompañamientos se cargan como un monto
 global en Otros gastos, no como precios unitarios.
@@ -82,5 +94,6 @@ node tests/navegador.cjs
 
 La prueba de navegador abre un servidor local temporal, verifica formularios,
 historial, perfiles, cortes, bebidas, lista editable, ajustes, reflujo de Quincho,
-impresión, cuatro tamaños de pantalla y recarga offline; cierra el servidor
+achuras, enlaces, confirmación/cancelación, impresión, cuatro tamaños de pantalla
+y recarga offline; cierra el servidor
 al finalizar. Las capturas se guardan en `.qa/`, fuera de la publicación.

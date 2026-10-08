@@ -6,7 +6,7 @@
 */
 const RUTA_APP = new URL(self.registration.scope).pathname;
 const PREFIJO_CACHE = `asado-pro:${RUTA_APP}:`;
-const CACHE_NAME = `${PREFIJO_CACHE}v5`;
+const CACHE_NAME = `${PREFIJO_CACHE}v6`;
 const ARCHIVOS_CACHE = [
   './', './index.html', './style.css', './script.js',
   './public/manifest.json', './public/icon.svg',
