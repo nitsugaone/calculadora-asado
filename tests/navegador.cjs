@@ -1,0 +1,170 @@
+// Pruebas opcionales de navegador: requiere Playwright disponible en NODE_PATH.
+const { chromium } = require('playwright');
+const assert = require('node:assert/strict');
+const http = require('node:http');
+const fs = require('node:fs/promises');
+const path = require('node:path');
+const raiz = path.resolve(__dirname, '..');
+const tipos = { '.html': 'text/html; charset=utf-8', '.js': 'text/javascript; charset=utf-8', '.css': 'text/css; charset=utf-8', '.json': 'application/json', '.svg': 'image/svg+xml' };
+const permitidos = new Set(['index.html', 'script.js', 'style.css', 'sw.js', 'public/manifest.json', 'public/icon.svg']);
+
+(async () => {
+  const servidor = http.createServer(async (solicitud, respuesta) => {
+    const ruta = new URL(solicitud.url, 'http://localhost').pathname;
+    const archivo = ruta.replace(/^\/calculadora-asado\//, '') || 'index.html';
+    if (!ruta.startsWith('/calculadora-asado/') || !permitidos.has(archivo)) {
+      respuesta.writeHead(404).end(); return;
+    }
+    try {
+      const contenido = await fs.readFile(path.join(raiz, archivo));
+      respuesta.writeHead(200, { 'Content-Type': tipos[path.extname(archivo)], 'Cache-Control': 'no-cache' }).end(contenido);
+    } catch { respuesta.writeHead(404).end(); }
+  });
+  let navegador;
+  try {
+    await new Promise((resolve) => servidor.listen(0, '127.0.0.1', resolve));
+    navegador = await chromium.launch({ headless: true, channel: 'msedge' });
+    const contexto = await navegador.newContext({ viewport: { width: 1280, height: 900 } });
+    const pagina = await contexto.newPage();
+    const errores = [];
+    let consultasClima = 0;
+    pagina.on('request', (solicitud) => {
+      if (solicitud.url().includes('api.open-meteo.com')) consultasClima += 1;
+    });
+    pagina.on('pageerror', (error) => errores.push(error.message));
+    await pagina.goto(`http://127.0.0.1:${servidor.address().port}/calculadora-asado/`);
+    await pagina.evaluate(() => navigator.serviceWorker.ready);
+    await pagina.reload();
+    await pagina.waitForFunction(() => navigator.serviceWorker.controller);
+    await pagina.getByText('Presupuesto incompleto.', { exact: false }).waitFor();
+    const altoConClima = (await pagina.locator('.panel--resultados').boundingBox()).height;
+    await pagina.locator('input[value="quincho"]').check();
+    assert.equal(await pagina.locator('#camposClima').isVisible(), false);
+    assert.equal(await pagina.locator('#panelPronostico').isVisible(), false);
+    assert.ok((await pagina.locator('.panel--resultados').boundingBox()).height < altoConClima - 100);
+    assert.equal(await pagina.locator('#presupuestoQuincho #presupuestoAsado').count(), 1);
+    await pagina.locator('input[value="chulengo"]').check();
+    assert.equal(await pagina.locator('#temperatura').inputValue(), '8');
+
+    await pagina.locator('#personasPagas').fill('0');
+    await pagina.locator('#personasPagas').blur();
+    await pagina.getByText('Ingresá la cantidad de personas para ver las cantidades', { exact: false }).waitFor();
+    assert.equal(await pagina.locator('#guardarAsado').isDisabled(), true);
+
+    await pagina.locator('#personasPagas').fill('8');
+    await pagina.locator('#invitadosGratis').fill('4');
+    await pagina.locator('#invitadosGratis').blur();
+    await pagina.locator('#resumenComensales').getByText('12 personas comen').waitFor();
+    await pagina.locator('.perfiles summary').click();
+    await pagina.locator('#hombres').fill('20');
+    await pagina.locator('#hombres').blur();
+    await pagina.getByText('Revisá los perfiles:', { exact: false }).waitFor();
+    assert.equal(await pagina.locator('#guardarAsado').isDisabled(), true);
+    for (const [id, valor] of [['hombres', '4'], ['mujeres', '3'], ['ninos', '2']]) {
+      await pagina.locator(`#${id}`).fill(valor);
+      await pagina.locator(`#${id}`).blur();
+    }
+    await pagina.getByText('6,5 kg', { exact: true }).waitFor();
+    await pagina.locator('#abrirAjustes').click();
+    assert.equal(await pagina.locator('#modalAjustes').isVisible(), true);
+    await pagina.keyboard.press('Escape');
+    assert.equal(await pagina.locator('#modalAjustes').isVisible(), false);
+    assert.equal(await pagina.locator('#abrirAjustes').evaluate((nodo) => document.activeElement === nodo), true);
+    await pagina.locator('#abrirAjustes').click();
+    await pagina.locator('#ajustesPrecios summary').click();
+    for (const id of ['precioCarne', 'precioCarbon', 'precioChorizo', 'precioMorcilla', 'precioLena']) {
+      await pagina.locator(`#${id}`).fill('1000');
+      await pagina.locator(`#${id}`).blur();
+    }
+    await pagina.getByText('Presupuesto completo', { exact: true }).waitFor();
+    await pagina.locator('#cerrarAjustes').click();
+    await pagina.locator('#guardarAsado').click();
+    await pagina.locator('#abrirAjustes').click();
+    await pagina.locator('#ajustesHistorial summary').click();
+    assert.equal(await pagina.locator('.historial-item').count(), 1);
+    await pagina.locator('#cerrarAjustes').click();
+    await pagina.locator('#personasPagas').fill('3');
+    await pagina.locator('#personasPagas').blur();
+    await pagina.locator('#abrirAjustes').click();
+    await pagina.locator('.btn-cargar').click();
+    assert.equal(await pagina.locator('#modalAjustes').isVisible(), false);
+    assert.equal(await pagina.locator('#personasPagas').inputValue(), '8');
+    assert.equal(await pagina.locator('#invitadosGratis').inputValue(), '4');
+    assert.equal(await pagina.locator('#hombres').inputValue(), '4');
+    assert.equal(await pagina.locator('#ninos').inputValue(), '2');
+
+    await pagina.locator('#abrirAjustes').click();
+    await pagina.locator('#ajustesCortes summary').click();
+    await pagina.locator('input[value="economico"]').check();
+    assert.equal(await pagina.locator('#campoPrecioPollo').isVisible(), true);
+    await pagina.locator('#precioPollo').fill('4000');
+    await pagina.locator('#precioPollo').blur();
+    await pagina.getByText('Presupuesto completo', { exact: true }).waitFor();
+    await pagina.locator('#cerrarAjustes').click();
+    await pagina.reload();
+    assert.equal(await pagina.locator('#hombres').inputValue(), '4');
+    assert.equal(await pagina.locator('#ninos').inputValue(), '2');
+    assert.equal(await pagina.locator('input[value="economico"]').isChecked(), true);
+
+    await pagina.locator('#generarLista').click();
+    assert.equal(await pagina.locator('#modalLista').isVisible(), true);
+    assert.match(await pagina.locator('#contenidoLista').textContent(), /Morcillas:.*\nCarbón:/);
+    await pagina.emulateMedia({ media: 'print' });
+    const impresion = await pagina.locator('#contenidoLista').evaluate((nodo) => {
+      const estilo = getComputedStyle(nodo);
+      return { fondo: estilo.backgroundColor, altura: estilo.maxHeight, overflow: estilo.overflow };
+    });
+    assert.deepEqual(impresion, { fondo: 'rgb(255, 255, 255)', altura: 'none', overflow: 'visible' });
+    await pagina.emulateMedia({ media: 'screen' });
+    await pagina.locator('#cerrarLista').click();
+
+    await pagina.locator('#abrirAjustes').click();
+    await pagina.locator('#btnReset').click();
+    assert.equal(await pagina.locator('#personasPagas').inputValue(), '12');
+    assert.equal(await pagina.evaluate(() => localStorage.getItem('asadoProEstado')), null);
+    assert.equal(await pagina.locator('#hombres').inputValue(), '0');
+    await pagina.locator('#cerrarAjustes').click();
+    await fs.mkdir(path.join(raiz, '.qa'), { recursive: true });
+    for (const [nombre, ancho] of [['desktop', 1280], ['tablet', 768], ['mobile', 390], ['mobile-estrecho', 320]]) {
+      await pagina.setViewportSize({ width: ancho, height: 900 });
+      await pagina.evaluate(() => window.scrollTo(0, 0));
+      if (await pagina.evaluate(() => document.documentElement.scrollWidth > innerWidth)) {
+        console.log('Elementos fuera de pantalla:', await pagina.locator('body *').evaluateAll((nodos) => nodos
+          .filter((nodo) => nodo.getBoundingClientRect().right > innerWidth + 1)
+          .map((nodo) => `${nodo.tagName}.${nodo.className}`).slice(0, 15)));
+      }
+      assert.equal(await pagina.evaluate(() => document.documentElement.scrollWidth <= innerWidth), true, `Sin desborde en ${ancho}px`);
+      const desbordes = await pagina.locator('.card-resultado').evaluateAll((cards) => cards.filter((card) => card.scrollWidth > card.clientWidth + 1).length);
+      assert.equal(desbordes, 0);
+      await pagina.screenshot({ path: path.join(raiz, '.qa', `${nombre}.png`), fullPage: true });
+      const altoAnterior = (await pagina.locator('.panel--resultados').boundingBox()).height;
+      await pagina.locator('input[value="quincho"]').check();
+      assert.ok((await pagina.locator('.panel--resultados').boundingBox()).height < altoAnterior - 100);
+      assert.equal(await pagina.locator('#presupuestoQuincho #presupuestoAsado').count(), 1);
+      await pagina.evaluate(() => Promise.all(document.getAnimations().map((animacion) => animacion.finished)));
+      await pagina.evaluate(() => window.scrollTo(0, 0));
+      await pagina.screenshot({ path: path.join(raiz, '.qa', `${nombre}-quincho.png`), fullPage: true });
+      await pagina.locator('#abrirAjustes').click();
+      await pagina.locator('#ajustesPrecios').evaluate((nodo) => { nodo.open = true; });
+      assert.equal(await pagina.locator('#modalAjustes').evaluate((nodo) => nodo.scrollWidth <= nodo.clientWidth), true);
+      await pagina.screenshot({ path: path.join(raiz, '.qa', `${nombre}-ajustes.png`) });
+      await pagina.keyboard.press('Escape');
+      await pagina.locator('input[value="chulengo"]').check();
+      assert.equal(await pagina.locator('.panel--resultados #presupuestoAsado').count(), 1);
+    }
+
+    await contexto.setOffline(true);
+    await pagina.reload();
+    await pagina.locator('#personasPagas').fill('20');
+    await pagina.locator('#personasPagas').blur();
+    await pagina.locator('#resumenComensales').getByText('20 personas comen').waitFor();
+    assert.equal(await pagina.locator('#estadoConexion').textContent(), 'Modo offline');
+    assert.deepEqual(errores, []);
+    assert.equal(consultasClima, 0);
+    console.log('OK: perfiles, validación, tuerca, acordeones, foco, historial, impresión, Quincho con reflujo, 4 tamaños y recarga offline. Sin errores de JavaScript ni consultas automáticas de clima.');
+  } finally {
+    await navegador?.close();
+    servidor.closeAllConnections();
+    await new Promise((resolve) => servidor.close(resolve));
+  }
+})().catch((error) => { console.error(error); process.exitCode = 1; });
