@@ -80,8 +80,13 @@ JavaScript vanilla; no requiere instalación de paquetes ni compilación.
 
 ## Archivos activos
 
-`index.html`, `style.css`, `script.js`, `sw.js`, `public/manifest.json` y `public/icon.svg`.
+`index.html`, `style.css`, `script.js`, `sw.js`, `manifest.json`, `icon.svg`,
+`public/manifest.json` y `public/icon.svg`.
 GitHub Pages publica únicamente estos archivos, después de ejecutar las pruebas.
+El manifest de la raíz conserva la identidad de las instalaciones anteriores;
+las rutas de `public/` también se mantienen compatibles.
+Desde React, cerrar todas las pestañas de la app permite activar el nuevo worker.
+No se borran los datos originales ni las cachés de otras aplicaciones.
 Al modificar los archivos offline, incrementar la versión de `CACHE_NAME` en `sw.js`.
 
 Los archivos React/TypeScript de `src/` y la configuración Vite se conservan sin
@@ -116,6 +121,7 @@ Verificación opcional con Playwright y Microsoft Edge disponibles en el equipo:
 
 ```sh
 node tests/navegador.cjs
+node tests/actualizacion.cjs
 ```
 
 La prueba de navegador abre un servidor local temporal, verifica formularios,

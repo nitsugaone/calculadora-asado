@@ -1,15 +1,16 @@
 /*
   CHANGELOG
+  - Mantiene manifest e icono en sus rutas originales para instalaciones React.
   - Caché exclusivo por ruta de aplicación: no se borran cachés de otros sitios.
   - Precarga completa de HTML, estilos, script, manifest e ícono.
   - Las versiones nuevas se activan cuando el usuario confirma la actualización.
 */
 const RUTA_APP = new URL(self.registration.scope).pathname;
 const PREFIJO_CACHE = `asado-pro:${RUTA_APP}:`;
-const CACHE_NAME = `${PREFIJO_CACHE}v8`;
+const CACHE_NAME = `${PREFIJO_CACHE}v9`;
 const ARCHIVOS_CACHE = [
   './', './index.html', './style.css', './script.js',
-  './public/manifest.json', './public/icon.svg',
+  './manifest.json', './icon.svg', './public/manifest.json', './public/icon.svg',
 ];
 
 self.addEventListener('install', (event) => {

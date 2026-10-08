@@ -6,7 +6,7 @@ const fs = require('node:fs/promises');
 const path = require('node:path');
 const raiz = path.resolve(__dirname, '..');
 const tipos = { '.html': 'text/html; charset=utf-8', '.js': 'text/javascript; charset=utf-8', '.css': 'text/css; charset=utf-8', '.json': 'application/json', '.svg': 'image/svg+xml' };
-const permitidos = new Set(['index.html', 'script.js', 'style.css', 'sw.js', 'public/manifest.json', 'public/icon.svg']);
+const permitidos = new Set(['index.html', 'script.js', 'style.css', 'sw.js', 'manifest.json', 'icon.svg', 'public/manifest.json', 'public/icon.svg']);
 
 (async () => {
   const servidor = http.createServer(async (solicitud, respuesta) => {

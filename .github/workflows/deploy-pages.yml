@@ -52,7 +52,7 @@ jobs:
       - name: Prepare static site
         run: |
           mkdir -p .pages-site/public
-          cp index.html style.css script.js sw.js .pages-site/
+          cp index.html style.css script.js sw.js manifest.json icon.svg .pages-site/
           cp public/manifest.json public/icon.svg .pages-site/public/
 
       - name: Upload static artifact
