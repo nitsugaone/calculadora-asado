@@ -42,6 +42,12 @@ JavaScript vanilla; no requiere instalación de paquetes ni compilación.
 - Costo dividido solo entre quienes pagan; sin pagadores no se muestra un costo
   por persona de cero.
 - Historial de hasta 10 asados, con cargar y borrar; persistencia del formulario.
+- Archivo anterior independiente: importa sesiones de `asado-pro-history-v1` y
+  registros de `asadoLogs` bajo confirmación, sin modificar esas claves ni el historial
+  actual. Evita duplicados por ID y guarda hasta 100 entradas sin expulsar existentes.
+  Los importes ausentes se muestran como sin registrar, no como cero. Reutilizar una
+  entrada exige indicar pagadores: se crea un nuevo asado con fórmulas actuales,
+  precios vacíos, perfiles sin completar y factor 1x, no una reproducción exacta.
 - Evaluación de carne por asado guardado: Justo, Sobró o Faltó. Registrar o corregir
   la evaluación no cambia las compras ni acumula ajustes. Aplicar la sugerencia es
   una acción independiente con confirmación, que conserva el resto del formulario.
@@ -62,6 +68,12 @@ JavaScript vanilla; no requiere instalación de paquetes ni compilación.
   Los precios quedan guardados en ese enlace, pero el destinatario puede editarlos.
   Los enlaces v2 guardan también el factor de carne; los vanilla v1 siguen admitidos
   y mantienen 1x. Las evaluaciones del historial no se comparten.
+- Los enlaces React `?state=` se abren con vista previa y confirmación: `com` es el
+  total y `np` los invitados sin pago; `afuera` se traduce a Intemperie. Conservan
+  precio único de carne, carbón y extras. No inventan precios unitarios de leña ni
+  embutidos: se recalcula un subtotal incompleto y se muestran los totales anteriores
+  solo como referencia. Fecha, perfiles y calibración no estaban en esos enlaces.
+  Al decidir se elimina únicamente `state`, conservando otros parámetros y anclas.
 - Pronóstico Open-Meteo de temperatura y viento, consultado solo bajo demanda.
 - PWA offline después de la primera carga completa por HTTPS o localhost.
   Las actualizaciones se activan desde el botón que aparece cuando hay una nueva versión.
@@ -80,8 +92,10 @@ modificar; no forman parte de la entrada estática vanilla de esta propuesta.
 Esta migración recupera tipos de carne, rendimiento optativo, cordero, bebidas y
 lista editable, achuras, calibración optativa y enlaces con precios guardados.
 La calibración no se aplica automáticamente ni modifica el antiguo ajuste global
-de React. Tampoco migra el historial antiguo de React ni interpreta
-los enlaces antiguos `?state=`; los nuevos usan `#asado=` y requieren esta versión vanilla.
+de React. El historial anterior se copia a un archivo separado, no se convierte en
+cálculos completos: faltan precios unitarios, perfiles y reparto de pagos.
+Los enlaces antiguos `?state=` son compatibles, pero se recalculan con las fórmulas
+actuales; los totales pueden diferir. Los nuevos enlaces usan `#asado=`.
 Los gramajes iniciales son 750/500/250 g crudos por perfil; se puede activar el
 ajuste por corte. Los precios de bebidas y acompañamientos se cargan como un monto
 global en Otros gastos, no como precios unitarios.
@@ -107,5 +121,5 @@ node tests/navegador.cjs
 La prueba de navegador abre un servidor local temporal, verifica formularios,
 historial, perfiles, cortes, bebidas, lista editable, ajustes, reflujo de Quincho,
 achuras, calibración, evaluaciones, enlaces v1/v2, confirmación/cancelación, impresión, cuatro tamaños de pantalla
-y recarga offline; cierra el servidor
+y recarga offline; también verifica enlaces React e importación sin pérdida de originales. Cierra el servidor
 al finalizar. Las capturas se guardan en `.qa/`, fuera de la publicación.

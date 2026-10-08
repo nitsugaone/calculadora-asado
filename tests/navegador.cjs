@@ -264,6 +264,73 @@ const permitidos = new Set(['index.html', 'script.js', 'style.css', 'sw.js', 'pu
     await pagina.locator('#resumenCompartido').getByText('ajuste 1x', { exact: false }).waitFor();
     await pagina.locator('#cancelarCompartido').click();
 
+    // Enlaces React: com es el total y np los invitados; no inventar precios faltantes.
+    const enlaceReact = new URL(enlace.split('#')[0]);
+    enlaceReact.searchParams.set('referencia', 'conservar');
+    enlaceReact.searchParams.set('state', Buffer.from(JSON.stringify({com:10,np:2,ent:'afuera',tmp:8,wnd:25,
+      cut:'pollo',pKg:4300,pCoal:2400,ext:9000,tot:100000,cab:12500})).toString('base64'));
+    const estadoAntesDeReact = await pagina.evaluate(() => localStorage.getItem('asadoProEstado'));
+    await pagina.goto(enlaceReact.href);
+    await pagina.locator('#modalCompartido').waitFor({ state: 'visible' });
+    assert.equal(await pagina.evaluate(() => localStorage.getItem('asadoProEstado')), estadoAntesDeReact);
+    assert.match(await pagina.locator('#detalleCompatibilidad').textContent(), /Faltan precios unitarios/);
+    await pagina.locator('#cancelarCompartido').click();
+    assert.equal(new URL(pagina.url()).searchParams.get('referencia'), 'conservar');
+    assert.equal(new URL(pagina.url()).searchParams.has('state'), false);
+    await pagina.goto(enlaceReact.href);
+    await pagina.locator('#aceptarCompartido').click();
+    assert.equal(await pagina.locator('#personasPagas').inputValue(), '8');
+    assert.equal(await pagina.locator('#invitadosGratis').inputValue(), '2');
+    assert.equal(await pagina.locator('#tipoCarne').inputValue(), 'pollo');
+    assert.equal(await pagina.locator('#precioPollo').inputValue(), '4300');
+    assert.equal(await pagina.locator('#precioChorizo').inputValue(), '');
+    assert.equal(await pagina.locator('#factorCompra').inputValue(), '1');
+    const corruptoReact = new URL(enlaceReact.href);
+    corruptoReact.searchParams.set('state', '%no-valido');
+    await pagina.goto(corruptoReact.href);
+    await pagina.getByText('Enlace inválido o incompatible.', { exact: false }).waitFor();
+    assert.equal(await pagina.locator('#personasPagas').inputValue(), '8');
+
+    // Archivo separado: importación confirmada sin duplicados ni alteración de originales.
+    const originalesReact = await pagina.evaluate(() => {
+      const sesiones = JSON.stringify([{id:'anterior1',date:'2026-10-07T15:00:00.000Z',people:15,
+        cutType:'cerdo',scenario:'chulengo',temp:8,wind:25,meatKg:8.2,carbonKg:9.5,costPerPerson:0,feedback:'sobro'}]);
+      const logs = JSON.stringify([{id:'anterior1',timestamp:1791385200000,comensalesCount:15},
+        {id:'soloLog',timestamp:1780671600000,comensalesCount:8,entorno:'quincho',clima:{temp:12,viento:0},calculado:{carneKg:4,carbonKg:3}}]);
+      localStorage.setItem('asado-pro-history-v1', sesiones);
+      localStorage.setItem('asadoLogs', logs);
+      return {sesiones,logs};
+    });
+    await pagina.reload();
+    await pagina.locator('#abrirAjustes').click();
+    await pagina.locator('#ajustesHistorial summary').click();
+    pagina.once('dialog', (dialogo) => dialogo.dismiss());
+    await pagina.locator('#importarHistorialReact').click();
+    assert.equal(await pagina.locator('#archivoReact .historial-item').count(), 0);
+    pagina.once('dialog', (dialogo) => dialogo.accept());
+    await pagina.locator('#importarHistorialReact').click();
+    assert.equal(await pagina.locator('#archivoReact .historial-item').count(), 2);
+    assert.equal(await pagina.locator('#importarHistorialReact').isDisabled(), true);
+    assert.equal(await pagina.evaluate(() => localStorage.getItem('asado-pro-history-v1')), originalesReact.sesiones);
+    assert.equal(await pagina.evaluate(() => localStorage.getItem('asadoLogs')), originalesReact.logs);
+    await pagina.locator('#archivoReact .btn-cargar').first().click();
+    assert.equal(await pagina.locator('#campoPagadoresAnterior').isVisible(), true);
+    assert.equal(await pagina.locator('#aceptarCompartido').isDisabled(), true);
+    await pagina.locator('#cancelarCompartido').click();
+    assert.equal(await pagina.locator('#modalAjustes').isVisible(), true);
+    assert.equal(await pagina.locator('#invitadosGratis').inputValue(), '2');
+    await pagina.locator('#archivoReact .btn-cargar').first().click();
+    await pagina.locator('#pagadoresAnterior').fill('16');
+    assert.equal(await pagina.locator('#aceptarCompartido').isDisabled(), true);
+    await pagina.locator('#pagadoresAnterior').fill('10');
+    await pagina.locator('#aceptarCompartido').click();
+    assert.equal(await pagina.locator('#modalAjustes').isVisible(), false);
+    assert.equal(await pagina.locator('#personasPagas').inputValue(), '10');
+    assert.equal(await pagina.locator('#invitadosGratis').inputValue(), '5');
+    assert.equal(await pagina.locator('#tipoCarne').inputValue(), 'cerdo');
+    assert.equal(await pagina.locator('#precioCerdo').inputValue(), '');
+    assert.equal(await pagina.locator('#factorCompra').inputValue(), '1');
+
     await pagina.locator('#abrirAjustes').click();
     await pagina.locator('#btnReset').click();
     assert.equal(await pagina.locator('#personasPagas').inputValue(), '12');
@@ -304,6 +371,15 @@ const permitidos = new Set(['index.html', 'script.js', 'style.css', 'sw.js', 'pu
       await pagina.locator('#ajustesHistorial').evaluate((nodo) => { nodo.open = true; nodo.scrollIntoView(); });
       assert.equal(await pagina.locator('#modalAjustes').evaluate((nodo) => nodo.scrollWidth <= nodo.clientWidth), true);
       await pagina.screenshot({ path: path.join(raiz, '.qa', `${nombre}-evaluacion.png`) });
+      await pagina.locator('.archivo-react').evaluate((nodo) => nodo.scrollIntoView());
+      assert.equal(await pagina.locator('#modalAjustes').evaluate((nodo) => nodo.scrollWidth <= nodo.clientWidth), true);
+      await pagina.screenshot({ path: path.join(raiz, '.qa', `${nombre}-archivo.png`) });
+      await pagina.setViewportSize({ width: ancho, height: 640 });
+      await pagina.locator('#archivoReact .btn-cargar').first().click();
+      assert.equal(await pagina.locator('#modalCompartido').evaluate((nodo) => nodo.scrollWidth <= nodo.clientWidth), true);
+      await pagina.screenshot({ path: path.join(raiz, '.qa', `${nombre}-recuperacion.png`) });
+      await pagina.locator('#cancelarCompartido').click();
+      await pagina.setViewportSize({ width: ancho, height: 900 });
       await pagina.keyboard.press('Escape');
       await pagina.goto(enlace);
       await pagina.locator('#modalCompartido').waitFor({ state: 'visible' });
@@ -328,9 +404,17 @@ const permitidos = new Set(['index.html', 'script.js', 'style.css', 'sw.js', 'pu
     assert.equal(await pagina.locator('#personasPagas').inputValue(), '8');
     assert.equal(await pagina.locator('#factorCompra').inputValue(), '1.12');
     assert.equal(await pagina.locator('#estadoConexion').textContent(), 'Modo offline');
+    await pagina.goto(enlaceReact.href);
+    await pagina.locator('#modalCompartido').waitFor({ state: 'visible' });
+    await pagina.reload();
+    await pagina.locator('#aceptarCompartido').click();
+    assert.equal(await pagina.locator('#invitadosGratis').inputValue(), '2');
+    assert.equal(await pagina.locator('#precioPollo').inputValue(), '4300');
+    assert.equal(await pagina.locator('#archivoReact .historial-item').count(), 2);
+    assert.equal(await pagina.evaluate(() => localStorage.getItem('asado-pro-history-v1')), originalesReact.sesiones);
     assert.deepEqual(errores, []);
     assert.equal(consultasClima, 0);
-    console.log('OK: evaluación idempotente, ajuste confirmado, teclado, reset y enlaces v1/v2 con factor offline; achuras, cortes, bebidas, lista, historial, perfiles e impresión en 4 tamaños. Sin errores JS ni consultas automáticas de clima.');
+    console.log('OK: enlaces React y vanilla v1/v2 offline; importación confirmada, archivo sin duplicados/originales intactos y recuperación con pagadores explícitos; calibración, compras, historial e impresión en 4 tamaños. Sin errores JS ni consultas automáticas de clima.');
   } finally {
     await navegador?.close();
     servidor.closeAllConnections();

@@ -1,6 +1,7 @@
 <!doctype html>
 <!--
   CHANGELOG
+  - Agregué importación no destructiva del historial React y confirmación para enlaces antiguos.
   - Agregué evaluación de carne en el historial y ajuste de compra opcional, sin aprendizaje automático.
   - Agregué achuras optativas y confirmación antes de cargar un presupuesto compartido.
   - Recuperé selección de carnes, cordero, bebidas y lista editable en los ajustes.
@@ -293,6 +294,13 @@
         <details class="acordeon-ajustes historial" id="ajustesHistorial">
           <summary>Historial de asados</summary>
           <div id="historialAsados" class="historial__contenido"></div>
+          <div class="archivo-react">
+            <h3>Historial anterior</h3>
+            <p id="estadoImportacionReact" class="ayuda" role="status"></p>
+            <button id="importarHistorialReact" type="button" class="boton boton--ghost">Importar historial anterior</button>
+            <p class="ayuda">La copia importada es independiente del historial actual. Los datos originales no se borran ni se modifican.</p>
+            <div id="archivoReact" class="historial-lista"></div>
+          </div>
         </details>
         <button type="button" id="btnReset" class="boton boton--ghost boton--reset">↺ Volver a valores por defecto</button>
       </form>
@@ -318,6 +326,12 @@
       <div class="ajustes-contenido">
         <p id="resumenCompartido" class="resumen-comensales"></p>
         <p id="fechaCompartido" class="ayuda"></p>
+        <p id="detalleCompatibilidad" class="ayuda" hidden></p>
+        <div id="campoPagadoresAnterior" class="campo" hidden>
+          <label for="pagadoresAnterior">Personas que pagan en el nuevo asado</label>
+          <div class="control-linea"><input id="pagadoresAnterior" type="number" inputmode="numeric" pattern="[0-9]*" min="0" step="1" placeholder="Sin registrar" aria-describedby="ayudaPagadoresAnterior" /></div>
+          <p id="ayudaPagadoresAnterior" class="ayuda"></p>
+        </div>
         <p id="avisoCompartido" class="ayuda">Cargar reemplaza el formulario y restablece la lista sugerida. Tu historial no se elimina. Los precios del enlace son editables y no se actualizan desde internet.</p>
         <div class="acciones">
           <button id="aceptarCompartido" type="button" class="boton">Cargar asado compartido</button>

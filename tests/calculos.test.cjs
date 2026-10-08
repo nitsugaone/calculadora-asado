@@ -70,6 +70,159 @@ function crearApp() {
   return { evaluar, nodos, memoria, pendientes, window };
 }
 
+function sesionReact(cambios = {}) {
+  return { id: '1720000000000', date: '2026-06-05T15:00:00.000Z', people: 12,
+    cutType: 'cerdo', scenario: 'afuera', temp: 8, wind: 25, meatKg: 6.5,
+    carbonKg: 9, costPerPerson: 8000, feedback: 'falto', ...cambios };
+}
+
+test('enlace React conserva total, invitados y precio unico sin inventar precios restantes', () => {
+  const { evaluar } = crearApp();
+  const texto = btoa(JSON.stringify({ com: 12, np: 4, ent: 'afuera', tmp: 8, wnd: 25,
+    cut: 'pollo', pKg: 10000, pCoal: 2200, ext: 5000, tot: 1, cab: 1 }));
+  const datos = evaluar(`decodificarEnlaceReact('${texto}')`);
+  assert.equal(datos.estado.pagadores, 8);
+  assert.equal(datos.estado.gratis, 4);
+  assert.equal(datos.estado.entorno, 'intemperie');
+  assert.equal(datos.estado.precioPollo, 10000);
+  assert.equal(datos.estado.precioCarbon, 2200);
+  assert.equal(datos.estado.precioChorizo, '');
+  assert.equal(datos.estado.precioLena, '');
+  assert.equal(datos.estado.factorCompra, 1);
+  assert.equal(datos.fecha, null);
+  assert.equal(datos.totalAnterior, 1);
+  const nuevo = evaluar(`calcularAsado(decodificarEnlaceReact('${texto}').estado)`);
+  assert.notEqual(nuevo.totalEstimado, 1);
+  assert.equal(nuevo.presupuestoCompleto, false);
+});
+
+test('enlace React corrupto o con invitados/precios invalidos nunca se aplica', () => {
+  const { evaluar } = crearApp();
+  const base = { com: 12, np: 4, ent: 'quincho', tmp: 8, wnd: 25, cut: 'cerdo', pKg: 10000, pCoal: 2200, ext: 0 };
+  for (const cambio of [{np:13}, {com:0}, {com:'12'}, {cut:'inventado'}, {cut:{toString:0}},
+    {pKg:-1}, {pKg:12.5}, {wnd:999}, {tot:'90000'}]) {
+    assert.equal(evaluar(`decodificarEnlaceReact('${btoa(JSON.stringify({...base,...cambio}))}')`), null);
+  }
+  assert.equal(evaluar("decodificarEnlaceReact('%%%')"), null);
+  assert.equal(evaluar("decodificarEnlaceReact('a'.repeat(12001))"), null);
+});
+
+test('abrir/cancelar enlace React conserva formulario y limpia solo su parametro', () => {
+  const { evaluar, window } = crearApp();
+  const url = new URL(window.location.href);
+  url.searchParams.set('state', btoa(JSON.stringify({com:12,np:4,ent:'afuera',tmp:8,wnd:25,cut:'cerdo',pKg:10000,pCoal:2200,ext:0})));
+  url.searchParams.set('referencia', 'conservar'); url.hash = 'notas';
+  window.location = url;
+  evaluar('ofrecerAsadoCompartido()');
+  assert.equal(evaluar('calculoActual.pagadores'), 12);
+  evaluar('cancelarAsadoCompartido()');
+  assert.equal(window.location.searchParams.has('state'), false);
+  assert.equal(window.location.searchParams.get('referencia'), 'conservar');
+  assert.equal(window.location.hash, '#notas');
+  window.location = url;
+  evaluar('ofrecerAsadoCompartido(); aceptarAsadoCompartido()');
+  assert.equal(evaluar('calculoActual.pagadores'), 8);
+  assert.equal(evaluar('calculoActual.gratis'), 4);
+  assert.equal(window.location.searchParams.has('state'), false);
+});
+
+test('historial React y logs se validan y deduplican sin transformar faltantes en cero', () => {
+  const { evaluar, memoria } = crearApp();
+  memoria.set('asado-pro-history-v1', JSON.stringify([sesionReact(), {id:'invalido',date:'mal',people:12}]));
+  memoria.set('asadoLogs', JSON.stringify([{id:'1720000000000',timestamp:1780671600000,comensalesCount:12},
+    {id:'otro',timestamp:1780671600000,comensalesCount:8,entorno:'quincho',calculado:{carneKg:4,carbonKg:0},precios:{totalARS:0,porCabeza:0}}]));
+  const candidatos = evaluar('leerCandidatosReact()');
+  assert.equal(candidatos.length, 2);
+  const sesion = candidatos.find((item) => item.id === 'react_1720000000000');
+  assert.equal(sesion.origen, 'sesion');
+  assert.equal(sesion.totalEstimado, null);
+  assert.equal(sesion.costoPorCabeza, 8000);
+  assert.equal(sesion.entorno, 'intemperie');
+  assert.equal(candidatos.find((item) => item.id === 'react_otro').totalEstimado, 0);
+});
+
+test('registro coincidente completa campos ausentes sin sustituir datos de la sesion', () => {
+  const { evaluar, memoria } = crearApp();
+  const sesion = sesionReact();
+  memoria.set('asado-pro-history-v1', JSON.stringify([sesion]));
+  const log = {id:sesion.id,timestamp:Date.parse(sesion.date)+10,comensalesCount:12,precios:{totalARS:90000,porCabeza:9000}};
+  memoria.set('asadoLogs', JSON.stringify([log]));
+  assert.equal(evaluar('leerCandidatosReact()[0].totalEstimado'), 90000);
+  assert.equal(evaluar('leerCandidatosReact()[0].costoPorCabeza'), 8000);
+  memoria.set('asadoLogs', JSON.stringify([{...log,comensalesCount:13}]));
+  assert.equal(evaluar('leerCandidatosReact()[0].totalEstimado'), null);
+});
+
+test('importar historial requiere confirmacion, es idempotente y no toca originales ni historial nuevo', () => {
+  const { evaluar, memoria, window } = crearApp();
+  evaluar('guardarAsado()');
+  const actual = memoria.get('asadoProHistorialVanilla');
+  const original = JSON.stringify([sesionReact()]);
+  memoria.set('asado-pro-history-v1', original);
+  memoria.set('asadoLogs', '[]');
+  window.confirm = () => false;
+  evaluar('importarHistorialReact()');
+  assert.equal(memoria.has('asadoProArchivoReact'), false);
+  window.confirm = () => true;
+  evaluar('importarHistorialReact(); importarHistorialReact()');
+  assert.equal(evaluar('leerArchivoReact().length'), 1);
+  assert.equal(memoria.get('asado-pro-history-v1'), original);
+  assert.equal(memoria.get('asadoLogs'), '[]');
+  assert.equal(memoria.get('asadoProHistorialVanilla'), actual);
+  assert.equal(evaluar('calculoActual.factorCompra'), 1);
+});
+
+test('fuentes y archivos corruptos o almacenamiento bloqueado no borran originales', () => {
+  const { evaluar, memoria, window } = crearApp();
+  memoria.set('asado-pro-history-v1', '{corrupto');
+  memoria.set('asadoLogs', '{}');
+  memoria.set('asadoProArchivoReact', '{}');
+  assert.equal(evaluar('leerCandidatosReact().length'), 0);
+  assert.equal(evaluar('leerArchivoReact().length'), 0);
+  assert.equal(memoria.get('asado-pro-history-v1'), '{corrupto');
+  const original = JSON.stringify([sesionReact()]);
+  memoria.set('asado-pro-history-v1', original);
+  window.localStorage.setItem = () => { throw new Error('Sin espacio'); };
+  evaluar('importarHistorialReact()');
+  assert.equal(evaluar('leerArchivoReact().length'), 0);
+  assert.equal(memoria.get('asado-pro-history-v1'), original);
+});
+
+test('reutilizar archivo exige pagadores explicitos y no restaura presupuestos incompletos', () => {
+  const { evaluar, memoria, nodos } = crearApp();
+  memoria.set('asado-pro-history-v1', JSON.stringify([sesionReact()]));
+  evaluar('importarHistorialReact(); prepararDesdeArchivoReact(leerArchivoReact()[0].id); aceptarAsadoCompartido()');
+  assert.equal(evaluar('calculoActual.tipoCarne'), 'automatico');
+  assert.equal(nodos.get('#aceptarCompartido').disabled, true);
+  nodos.get('#pagadoresAnterior').value = '13';
+  assert.equal(evaluar('validarPagadoresAnteriores()'), null);
+  nodos.get('#pagadoresAnterior').value = '8';
+  evaluar('aceptarAsadoCompartido()');
+  assert.equal(evaluar('calculoActual.pagadores'), 8);
+  assert.equal(evaluar('calculoActual.gratis'), 4);
+  assert.equal(evaluar('calculoActual.tipoCarne'), 'cerdo');
+  assert.equal(evaluar('calculoActual.precioCerdo'), '');
+  assert.equal(evaluar('calculoActual.totalEstimado'), 0);
+  assert.equal(evaluar('calculoActual.presupuestoCompleto'), false);
+  evaluar('prepararDesdeArchivoReact(leerArchivoReact()[0].id)');
+  nodos.get('#pagadoresAnterior').value = '0';
+  evaluar('aceptarAsadoCompartido()');
+  assert.equal(evaluar('calculoActual.pagadores'), 0);
+  assert.equal(evaluar('calculoActual.gratis'), 12);
+});
+
+test('archivo React limita capacidad sin expulsar entradas existentes', () => {
+  const { evaluar, memoria } = crearApp();
+  const datos = Array.from({length:100}, (_,i) => ({...sesionReact({id:String(i)}), totalARS:0}));
+  memoria.set('asado-pro-history-v1', JSON.stringify(datos));
+  evaluar('importarHistorialReact()');
+  assert.equal(evaluar('leerArchivoReact().length'), 100);
+  memoria.set('asado-pro-history-v1', JSON.stringify([sesionReact({id:'nuevo'})]));
+  evaluar('importarHistorialReact()');
+  assert.equal(evaluar('leerArchivoReact().length'), 100);
+  assert.equal(evaluar('leerArchivoReact().some((item)=>item.id==="react_nuevo")'), false);
+});
+
 test('factor optativo mantiene gramajes base y evita redondeos binarios de compra', () => {
   const { evaluar } = crearApp();
   const base = evaluar('calcularAsado({...ESTADO_INICIAL,pagadores:10})');

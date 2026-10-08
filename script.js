@@ -1,5 +1,6 @@
 /*
   CHANGELOG
+  - Recuperé enlaces React y copias históricas sin inventar datos faltantes ni borrar originales.
   - Agregué evaluaciones idempotentes y ajuste explícito de carne, independiente de los gramajes base.
   - Versioné enlaces con el factor aplicado y mantuve lectura de enlaces vanilla anteriores.
   - Agregué achuras optativas y enlaces versionados con validación y confirmación de carga.
@@ -26,6 +27,8 @@ const PESOS_AR = new Intl.NumberFormat('es-AR', {
 
 const STORAGE_HISTORIAL = 'asadoProHistorialVanilla';
 const STORAGE_ESTADO = 'asadoProEstado';
+const STORAGE_ARCHIVO_REACT = 'asadoProArchivoReact';
+const MAXIMO_ARCHIVO_REACT = 100;
 const PORCION_ESTANDAR_GRAMOS = 450;
 const DEBOUNCE_MS = 300;
 const GRAMOS_POR_PERFIL = { hombres: 750, mujeres: 500, ninos: 250 };
@@ -1029,6 +1032,7 @@ function aplicarSugerenciaAsado(id) {
 }
 
 function renderizarHistorial() {
+  renderizarArchivoReact();
   const historial = leerHistorial();
   elementos.historialAsados.replaceChildren();
 
@@ -1127,6 +1131,147 @@ function borrarHistorial() {
   renderizarHistorial();
 }
 
+// Las fuentes originales se leen, nunca se migran destructivamente ni se recalculan.
+function normalizarEntradaReact(datos, origen) {
+  if (!datos || typeof datos !== 'object' || Array.isArray(datos)) return null;
+  const id = datos.id;
+  if (typeof id !== 'string' || !/^[a-zA-Z0-9_-]{1,80}$/.test(id)) return null;
+  const esSesion = origen === 'sesion';
+  const fecha = esSesion ? datos.date : datos.timestamp;
+  if (esSesion ? typeof fecha !== 'string' || fecha.length > 40 : !Number.isSafeInteger(fecha) || fecha < 0) return null;
+  const instante = new Date(fecha);
+  if (!Number.isFinite(instante.getTime())) return null;
+  const personas = esSesion ? datos.people : datos.comensalesCount;
+  if (!Number.isSafeInteger(personas) || personas < 0 || personas > 10000) return null;
+  const numero = (valor, maximo = 1000000000000000) => typeof valor === 'number' && Number.isFinite(valor)
+    && valor >= 0 && valor <= maximo ? valor : null;
+  const clima = (valor, min, max) => typeof valor === 'number' && Number.isFinite(valor) && valor >= min && valor <= max ? valor : null;
+  const entorno = esSesion ? datos.scenario : datos.entorno;
+  const evaluacion = esSesion ? datos.feedback : datos.feedback?.estadoCarne;
+  return {
+    id: `react_${id}`, fecha: instante.toISOString(), origen, totalPersonas: personas,
+    entorno: ['quincho', 'chulengo', 'afuera'].includes(entorno) ? (entorno === 'afuera' ? 'intemperie' : entorno) : null,
+    tipoCarne: esSesion && typeof datos.cutType === 'string' && Object.hasOwn(TIPOS_CARNE, datos.cutType) ? datos.cutType : null,
+    temperatura: clima(esSesion ? datos.temp : datos.clima?.temp, -15, 35),
+    viento: clima(esSesion ? datos.wind : datos.clima?.viento, 0, 120),
+    kgCarne: numero(esSesion ? datos.meatKg : datos.calculado?.carneKg, 1000000),
+    carbonKg: numero(esSesion ? datos.carbonKg : datos.calculado?.carbonKg, 1000000),
+    totalEstimado: numero(esSesion ? datos.totalARS : datos.precios?.totalARS),
+    costoPorCabeza: numero(esSesion ? datos.costPerPerson : datos.precios?.porCabeza),
+    evaluacion: typeof evaluacion === 'string' && Object.hasOwn(EVALUACIONES_CARNE, evaluacion) ? evaluacion : '',
+  };
+}
+
+function leerCandidatosReact() {
+  const entradas = new Map();
+  [['asado-pro-history-v1', 'sesion'], ['asadoLogs', 'registro']].forEach(([clave, origen]) => {
+    const datos = leerAlmacenamiento(clave, []);
+    if (!Array.isArray(datos)) return;
+    datos.slice(0, 100).forEach((dato) => {
+      const entrada = normalizarEntradaReact(dato, origen);
+      // Prevalece la sesión; un registro coincidente solo completa campos ausentes.
+      if (!entrada) return;
+      const anterior = entradas.get(entrada.id);
+      if (!anterior) entradas.set(entrada.id, entrada);
+      else if (anterior.totalPersonas === entrada.totalPersonas
+        && Math.abs(Date.parse(anterior.fecha) - Date.parse(entrada.fecha)) < 60000) {
+        ['totalEstimado', 'costoPorCabeza', 'kgCarne', 'carbonKg', 'temperatura', 'viento', 'tipoCarne', 'entorno'].forEach((clave) => {
+          if (anterior[clave] === null && entrada[clave] !== null) anterior[clave] = entrada[clave];
+        });
+      }
+    });
+  });
+  return [...entradas.values()].sort((a, b) => Date.parse(b.fecha) - Date.parse(a.fecha));
+}
+
+// Valida también la copia importada, sin confiar en objetos escritos en localStorage.
+function leerArchivoReact() {
+  const datos = leerAlmacenamiento(STORAGE_ARCHIVO_REACT, []);
+  if (!Array.isArray(datos)) return [];
+  const entradas = new Map();
+  datos.slice(0, MAXIMO_ARCHIVO_REACT).forEach((dato) => {
+    if (!dato || typeof dato !== 'object' || typeof dato.id !== 'string' || !dato.id.startsWith('react_')) return;
+    const entrada = normalizarEntradaReact({
+      id: dato.id.slice(6), date: dato.fecha, people: dato.totalPersonas,
+      scenario: dato.entorno === 'intemperie' ? 'afuera' : dato.entorno,
+      cutType: dato.tipoCarne, temp: dato.temperatura, wind: dato.viento,
+      meatKg: dato.kgCarne, carbonKg: dato.carbonKg, totalARS: dato.totalEstimado,
+      costPerPerson: dato.costoPorCabeza, feedback: dato.evaluacion,
+    }, 'sesion');
+    if (entrada && !entradas.has(entrada.id)) entradas.set(entrada.id, {
+      ...entrada, origen: dato.origen === 'registro' ? 'registro' : 'sesion',
+    });
+  });
+  return [...entradas.values()].sort((a, b) => Date.parse(b.fecha) - Date.parse(a.fecha));
+}
+
+function importarHistorialReact() {
+  const archivo = leerArchivoReact();
+  const existentes = new Set(archivo.map((item) => item.id));
+  const nuevos = leerCandidatosReact().filter((item) => !existentes.has(item.id))
+    .slice(0, Math.max(0, MAXIMO_ARCHIVO_REACT - archivo.length));
+  if (!nuevos.length) return;
+  if (!window.confirm(`¿Importar ${nuevos.length} asados al archivo anterior? El historial actual y los originales se conservan.`)) return;
+  if (escribirAlmacenamiento(STORAGE_ARCHIVO_REACT, [...archivo, ...nuevos])) renderizarArchivoReact();
+}
+
+function renderizarArchivoReact() {
+  const archivo = leerArchivoReact();
+  const existentes = new Set(archivo.map((item) => item.id));
+  const nuevos = leerCandidatosReact().filter((item) => !existentes.has(item.id)).length;
+  $('#estadoImportacionReact').textContent = `${archivo.length} asados archivados · ${nuevos} nuevos disponibles${archivo.length >= MAXIMO_ARCHIVO_REACT ? ' · límite de 100 alcanzado' : ''}.`;
+  $('#importarHistorialReact').disabled = !nuevos || archivo.length >= MAXIMO_ARCHIVO_REACT;
+  const contenedor = $('#archivoReact');
+  contenedor.replaceChildren();
+  archivo.forEach((item) => {
+    const fila = crearNodo('article', 'historial-item');
+    fila.append(crearNodo('strong', '', `${new Intl.DateTimeFormat('es-AR', { dateStyle: 'short' }).format(new Date(item.fecha))} · ${item.totalPersonas} personas`));
+    fila.append(crearNodo('span', '', `Carne: ${item.kgCarne === null ? 'sin registrar' : formatearCompraKg(item.kgCarne)} · carbón: ${item.carbonKg === null ? 'sin registrar' : formatearKg(item.carbonKg)}`));
+    fila.append(crearNodo('span', '', `Total registrado: ${item.totalEstimado === null ? 'sin registrar' : formatearMoneda(item.totalEstimado)} · por cabeza registrado: ${item.costoPorCabeza === null ? 'sin registrar' : formatearMoneda(item.costoPorCabeza)}`));
+    fila.append(crearNodo('p', 'ayuda', `Reparto de pagos y precios unitarios no registrados. Evaluación: ${EVALUACIONES_CARNE[item.evaluacion]?.etiqueta || 'sin registrar'}.`));
+    const preparar = crearNodo('button', 'btn-cargar', 'Preparar nuevo asado');
+    preparar.type = 'button';
+    preparar.disabled = item.totalPersonas === 0;
+    preparar.addEventListener('click', () => prepararDesdeArchivoReact(item.id));
+    fila.append(preparar);
+    contenedor.append(fila);
+  });
+}
+
+// Un registro antiguo no permite deducir pagadores ni reproducir su presupuesto.
+function prepararDesdeArchivoReact(id) {
+  const item = leerArchivoReact().find((entrada) => entrada.id === id);
+  if (!item || !item.totalPersonas) return;
+  $('#tituloCompartido').textContent = 'Recuperar asado';
+  $('#aceptarCompartido').textContent = 'Preparar nuevo asado';
+  asadoCompartidoPendiente = {
+    estado: normalizarEstado({ ...ESTADO_INICIAL, pagadores: 0, gratis: item.totalPersonas,
+      tipoCarne: item.tipoCarne || ESTADO_INICIAL.tipoCarne, entorno: item.entorno || ESTADO_INICIAL.entorno,
+      temperatura: item.temperatura ?? ESTADO_INICIAL.temperatura, viento: item.viento ?? ESTADO_INICIAL.viento }),
+    requierePagadores: true,
+  };
+  $('#resumenCompartido').textContent = `${item.totalPersonas} comensales del historial anterior. Reparto de pagos sin registrar.`;
+  $('#fechaCompartido').textContent = `Asado registrado el ${new Intl.DateTimeFormat('es-AR', { dateStyle: 'short' }).format(new Date(item.fecha))}.`;
+  $('#detalleCompatibilidad').hidden = false;
+  $('#detalleCompatibilidad').textContent = 'Se usan las fórmulas actuales, perfiles sin completar, factor 1x y precios vacíos. El total histórico no se reutiliza como presupuesto. Los datos de clima o corte no registrados vuelven a los valores iniciales.';
+  $('#campoPagadoresAnterior').hidden = false;
+  $('#pagadoresAnterior').value = '';
+  $('#pagadoresAnterior').setAttribute('aria-invalid', 'false');
+  $('#pagadoresAnterior').max = String(item.totalPersonas);
+  $('#ayudaPagadoresAnterior').textContent = `Entre 0 y ${item.totalPersonas}. Los restantes serán invitados sin pago.`;
+  $('#aceptarCompartido').disabled = true;
+  if (!elementos.modalCompartido.open) elementos.modalCompartido.showModal();
+}
+
+function validarPagadoresAnteriores() {
+  const valor = leerPrecio($('#pagadoresAnterior').value);
+  const maximo = asadoCompartidoPendiente?.estado.gratis ?? 0;
+  const valido = valor !== '' && valor <= maximo;
+  $('#pagadoresAnterior').setAttribute('aria-invalid', String(!valido));
+  $('#aceptarCompartido').disabled = !valido;
+  return valido ? valor : null;
+}
+
 function textoResumen(calculo) {
   return [
     'Asado Pro Río Gallegos',
@@ -1214,6 +1359,39 @@ function decodificarAsadoCompartido(texto) {
   } catch { return null; }
 }
 
+// Compatibilidad con ?state= de React: com era TOTAL, np eran invitados sin pago.
+// Se recuperan solo datos presentes; tot/cab son referencias históricas, no precios.
+function decodificarEnlaceReact(texto) {
+  try {
+    if (typeof texto !== 'string' || !texto.length || texto.length > MAXIMO_ENLACE
+      || !/^[A-Za-z0-9+/]+={0,2}$/.test(texto)) return null;
+    const binario = atob(texto);
+    const datos = JSON.parse(new TextDecoder('utf-8', { fatal: true }).decode(
+      Uint8Array.from(binario, (caracter) => caracter.charCodeAt(0))));
+    if (!datos || typeof datos !== 'object' || Array.isArray(datos)) return null;
+    if (!Number.isSafeInteger(datos.com) || datos.com <= 0 || datos.com > 10000
+      || !Number.isSafeInteger(datos.np) || datos.np < 0 || datos.np > datos.com) return null;
+    if (!['quincho', 'chulengo', 'afuera'].includes(datos.ent)
+      || typeof datos.cut !== 'string' || datos.cut === 'automatico' || !Object.hasOwn(TIPOS_CARNE, datos.cut)) return null;
+    if (!Number.isFinite(datos.tmp) || datos.tmp < -15 || datos.tmp > 35
+      || !Number.isFinite(datos.wnd) || datos.wnd < 0 || datos.wnd > 120) return null;
+    if (!['pKg', 'pCoal', 'ext'].every((clave) => Number.isSafeInteger(datos[clave]) && datos[clave] >= 0 && datos[clave] <= 1000000000)) return null;
+    if (!['tot', 'cab'].every((clave) => datos[clave] == null || typeof datos[clave] === 'number'
+      && Number.isFinite(datos[clave]) && datos[clave] >= 0 && datos[clave] <= 1000000000000000)) return null;
+    return {
+      origenReact: true,
+      fecha: null,
+      totalAnterior: datos.tot ?? null,
+      porCabezaAnterior: datos.cab ?? null,
+      estado: normalizarEstado({ ...ESTADO_INICIAL, pagadores: datos.com - datos.np, gratis: datos.np,
+        tipoCarne: datos.cut, entorno: datos.ent === 'afuera' ? 'intemperie' : datos.ent,
+        temperatura: datos.tmp, viento: datos.wnd, precioCarne: datos.pKg,
+        precioPollo: datos.pKg, precioCerdo: datos.pKg, precioCordero: datos.pKg,
+        precioCarbon: datos.pCoal, extras: datos.ext }),
+    };
+  } catch { return null; }
+}
+
 function generarUrlCompartible(estado) {
   const url = new URL(window.location.href);
   if (!['http:', 'https:'].includes(url.protocol)) throw new Error('El enlace requiere abrir la app mediante HTTP o HTTPS.');
@@ -1245,17 +1423,21 @@ async function copiarEnlaceAsado() {
 
 // Se elimina el fragmento al decidir, evitando reimportaciones al recargar o resetear.
 function limpiarEnlaceDeDireccion() {
-  if (!window.location.hash.startsWith('#asado=')) return;
   const url = new URL(window.location.href);
-  url.hash = '';
+  const tieneFragmento = url.hash.startsWith('#asado=');
+  if (!tieneFragmento && !url.searchParams.has('state')) return;
+  if (tieneFragmento) url.hash = '';
+  url.searchParams.delete('state');
   window.history.replaceState(window.history.state, '', url.href);
 }
 
 function ofrecerAsadoCompartido() {
   const fragmento = window.location.hash;
-  if (!fragmento.startsWith('#asado=')) return;
-  const texto = fragmento.slice('#asado='.length);
-  asadoCompartidoPendiente = decodificarAsadoCompartido(texto);
+  const url = new URL(window.location.href);
+  if (!fragmento.startsWith('#asado=') && !url.searchParams.has('state')) return;
+  asadoCompartidoPendiente = fragmento.startsWith('#asado=')
+    ? decodificarAsadoCompartido(fragmento.slice('#asado='.length))
+    : decodificarEnlaceReact(url.searchParams.get('state'));
   if (!asadoCompartidoPendiente) {
     elementos.estadoGuardado.textContent = 'Enlace inválido o incompatible. Tu asado no se modificó.';
     limpiarEnlaceDeDireccion();
@@ -1263,16 +1445,35 @@ function ofrecerAsadoCompartido() {
     return;
   }
   const calculo = calcularAsado(asadoCompartidoPendiente.estado);
+  $('#tituloCompartido').textContent = 'Asado compartido';
+  $('#aceptarCompartido').textContent = 'Cargar asado compartido';
+  $('#campoPagadoresAnterior').hidden = true;
+  $('#aceptarCompartido').disabled = false;
+  $('#detalleCompatibilidad').hidden = !asadoCompartidoPendiente.origenReact;
+  if (asadoCompartidoPendiente.origenReact) {
+    const total = asadoCompartidoPendiente.totalAnterior;
+    const porCabeza = asadoCompartidoPendiente.porCabezaAnterior;
+    $('#detalleCompatibilidad').textContent = `Enlace anterior. Se recalcula con gramajes y fórmulas actuales, perfiles sin completar y factor 1x. Faltan precios unitarios de embutidos y leña. Total anterior: ${total === null ? 'sin registrar' : formatearMoneda(total)}; por cabeza anterior: ${porCabeza === null ? 'sin registrar' : formatearMoneda(porCabeza)}. Estos importes no se aplican como presupuesto nuevo.`;
+  }
   $('#resumenCompartido').textContent = `${FORMATO_AR.format(calculo.totalPersonas)} comensales · ${calculo.pagadores} pagan · ${TIPOS_CARNE[calculo.tipoCarne].etiqueta} · ajuste ${formatearDecimal(calculo.factorCompra, 2)}x · ${calculo.presupuestoCompleto ? 'Total' : 'Subtotal'} ${formatearMoneda(calculo.totalEstimado)}${calculo.presupuestoCompleto ? '' : ' (faltan precios)'}.`;
-  $('#fechaCompartido').textContent = `Precios guardados el ${new Intl.DateTimeFormat('es-AR', { dateStyle: 'short', timeStyle: 'short' }).format(new Date(asadoCompartidoPendiente.fecha))}.`;
+  $('#fechaCompartido').textContent = asadoCompartidoPendiente.fecha
+    ? `Precios guardados el ${new Intl.DateTimeFormat('es-AR', { dateStyle: 'short', timeStyle: 'short' }).format(new Date(asadoCompartidoPendiente.fecha))}.`
+    : 'Fecha de precios y calibración original no registradas.';
   if (!elementos.modalCompartido.open) elementos.modalCompartido.showModal();
 }
 
 function aceptarAsadoCompartido() {
   if (!asadoCompartidoPendiente) return;
-  aplicarEstadoFormulario(asadoCompartidoPendiente.estado);
+  let estado = asadoCompartidoPendiente.estado;
+  if (asadoCompartidoPendiente.requierePagadores) {
+    const pagadores = validarPagadoresAnteriores();
+    if (pagadores === null) return;
+    estado = { ...estado, pagadores, gratis: estado.gratis - pagadores };
+  }
+  aplicarEstadoFormulario(estado);
   guardarEstadoFormulario();
   elementos.modalCompartido.close();
+  if (elementos.modalAjustes.open) elementos.modalAjustes.close();
   asadoCompartidoPendiente = null;
   limpiarEnlaceDeDireccion();
 }
@@ -1448,6 +1649,8 @@ function configurarEventos() {
   elementos.compartirWhatsapp.addEventListener('click', compartirPorWhatsapp);
   elementos.copiarEnlace.addEventListener('click', copiarEnlaceAsado);
   $('#aceptarCompartido').addEventListener('click', aceptarAsadoCompartido);
+  $('#pagadoresAnterior').addEventListener('input', validarPagadoresAnteriores);
+  $('#importarHistorialReact').addEventListener('click', importarHistorialReact);
   $('#cancelarCompartido').addEventListener('click', cancelarAsadoCompartido);
   $('#cerrarCompartido').addEventListener('click', cancelarAsadoCompartido);
   elementos.modalCompartido.addEventListener('close', cancelarAsadoCompartido);

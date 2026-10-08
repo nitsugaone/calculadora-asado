@@ -1,5 +1,6 @@
 /*
   CHANGELOG
+  - Separé visualmente el archivo anterior y la recuperación de datos incompletos.
   - Agregué evaluación accesible en cada asado y ajuste de compra con foco visible.
   - Reutilicé el diálogo de ajustes para confirmar enlaces y conservar foco accesible.
   - Agregué selector de carnes y lista editable responsive con controles accesibles.
@@ -147,6 +148,16 @@ select {
 
 .sugerencia-factor { margin: 0; }
 #valorFactorCompra { color: var(--texto); font-weight: 800; }
+
+.archivo-react {
+  scroll-margin-top: 96px;
+  border-top: 1px solid var(--borde);
+  margin-top: 24px;
+  padding-top: 24px;
+}
+
+.archivo-react h3 { margin: 0 0 16px; font-size: 1rem; }
+#detalleCompatibilidad { padding: 12px 0; border-block: 1px solid var(--borde); }
 
 @media (min-width: 480px) {
   .lista-editable__campos { grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); }
