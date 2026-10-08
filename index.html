@@ -1,6 +1,7 @@
 <!doctype html>
 <!--
   CHANGELOG
+  - Agregué evaluación de carne en el historial y ajuste de compra opcional, sin aprendizaje automático.
   - Agregué achuras optativas y confirmación antes de cargar un presupuesto compartido.
   - Recuperé selección de carnes, cordero, bebidas y lista editable en los ajustes.
   - Agregué perfiles de 750/500/250 g de carne cruda y resumen de personas sin perfil.
@@ -203,6 +204,19 @@
               <div class="control-linea"><input id="personasAchuras" type="number" inputmode="numeric" pattern="[0-9]*" min="0" step="1" value="0" aria-describedby="detalleAchuras" /></div>
               <p id="detalleAchuras" class="ayuda" role="status">120 g crudos por persona, adicionales a la carne principal.</p>
             </div>
+          </div>
+        </details>
+
+        <details class="acordeon-ajustes" id="ajustesCalibracion">
+          <summary>Ajuste por experiencia</summary>
+          <div class="acordeon-ajustes__contenido">
+            <div class="campo">
+              <label for="factorCompra">Factor de compra de carne <output id="valorFactorCompra" for="factorCompra">1x</output></label>
+              <input id="factorCompra" type="range" min="0.6" max="1.5" step="0.01" value="1" aria-describedby="resumenCalibracion" />
+            </div>
+            <p id="resumenCalibracion" class="ayuda" role="status"></p>
+            <p class="ayuda">Solo ajusta la carne principal. No cambia gramajes base, achuras, embutidos ni bebidas. El combustible y el presupuesto acompañan la compra resultante.</p>
+            <button id="restablecerFactor" type="button" class="boton-icono" aria-label="Restablecer factor de compra a uno" title="Restablecer factor a 1x">↺</button>
           </div>
         </details>
 

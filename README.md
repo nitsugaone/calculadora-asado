@@ -42,6 +42,15 @@ JavaScript vanilla; no requiere instalación de paquetes ni compilación.
 - Costo dividido solo entre quienes pagan; sin pagadores no se muestra un costo
   por persona de cero.
 - Historial de hasta 10 asados, con cargar y borrar; persistencia del formulario.
+- Evaluación de carne por asado guardado: Justo, Sobró o Faltó. Registrar o corregir
+  la evaluación no cambia las compras ni acumula ajustes. Aplicar la sugerencia es
+  una acción independiente con confirmación, que conserva el resto del formulario.
+- Calibración optativa de la carne principal: factor de 0,60 a 1,50 en pasos de 0,01.
+  Sugerencias desde el factor del asado evaluado: Faltó +0,12; Sobró -0,05; Justo sin
+  cambios. Son orientativas y dependen del grupo, corte y acompañamientos, no son
+  garantías de porción. El ajuste no altera los gramajes base ni embutidos, achuras
+  o bebidas; combustible y presupuesto acompañan la cantidad de carne resultante.
+  Resetear vuelve a 1x; borrar historial no cambia el factor ya aplicado.
 - WhatsApp, copia y lista imprimible.
 - Enlaces versionados con configuración y precios guardados. Al abrirlos se muestra
   una vista previa; solo confirmar reemplaza el formulario. Cancelar o Escape
@@ -51,6 +60,8 @@ JavaScript vanilla; no requiere instalación de paquetes ni compilación.
   cifrados ni firmados, y requieren HTTP/HTTPS; nunca exponen rutas de archivos locales.
   Admiten hasta 10.000 comensales y precios enteros de hasta $1.000.000.000 por campo.
   Los precios quedan guardados en ese enlace, pero el destinatario puede editarlos.
+  Los enlaces v2 guardan también el factor de carne; los vanilla v1 siguen admitidos
+  y mantienen 1x. Las evaluaciones del historial no se comparten.
 - Pronóstico Open-Meteo de temperatura y viento, consultado solo bajo demanda.
 - PWA offline después de la primera carga completa por HTTPS o localhost.
   Las actualizaciones se activan desde el botón que aparece cuando hay una nueva versión.
@@ -67,8 +78,9 @@ modificar; no forman parte de la entrada estática vanilla de esta propuesta.
 ## Diferencias con la versión React de GitHub
 
 Esta migración recupera tipos de carne, rendimiento optativo, cordero, bebidas y
-lista editable, achuras y enlaces con precios guardados. Todavía no incluye
-calibración por feedback. Tampoco migra el historial antiguo de React ni interpreta
+lista editable, achuras, calibración optativa y enlaces con precios guardados.
+La calibración no se aplica automáticamente ni modifica el antiguo ajuste global
+de React. Tampoco migra el historial antiguo de React ni interpreta
 los enlaces antiguos `?state=`; los nuevos usan `#asado=` y requieren esta versión vanilla.
 Los gramajes iniciales son 750/500/250 g crudos por perfil; se puede activar el
 ajuste por corte. Los precios de bebidas y acompañamientos se cargan como un monto
@@ -94,6 +106,6 @@ node tests/navegador.cjs
 
 La prueba de navegador abre un servidor local temporal, verifica formularios,
 historial, perfiles, cortes, bebidas, lista editable, ajustes, reflujo de Quincho,
-achuras, enlaces, confirmación/cancelación, impresión, cuatro tamaños de pantalla
+achuras, calibración, evaluaciones, enlaces v1/v2, confirmación/cancelación, impresión, cuatro tamaños de pantalla
 y recarga offline; cierra el servidor
 al finalizar. Las capturas se guardan en `.qa/`, fuera de la publicación.

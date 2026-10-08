@@ -59,6 +59,7 @@ function crearApp() {
     clearTimeout: (id) => pendientes.delete(id),
     setTimeout: (accion) => { pendientes.set(++indice, accion); return indice; },
     open: (url) => { window.ultimaUrl = url; },
+    confirm: () => true,
   };
   window.history = { state: null, replaceState(_estado, _titulo, url) { window.location = new URL(url); } };
   const navigator = { clipboard: { async writeText(texto) { window.ultimoTexto = texto; } } };
@@ -68,6 +69,117 @@ function crearApp() {
   evaluar('aplicarEstadoFormulario(ESTADO_INICIAL)');
   return { evaluar, nodos, memoria, pendientes, window };
 }
+
+test('factor optativo mantiene gramajes base y evita redondeos binarios de compra', () => {
+  const { evaluar } = crearApp();
+  const base = evaluar('calcularAsado({...ESTADO_INICIAL,pagadores:10})');
+  const c = evaluar('calcularAsado({...ESTADO_INICIAL,pagadores:10,factorCompra:1.12})');
+  assert.equal(base.kgCarneTotal, 5);
+  assert.equal(c.gramosCarneBase, 5000);
+  assert.equal(c.gramosCarneTotal, 5600);
+  assert.equal(c.kgCarneTotal, 5.6);
+  assert.deepEqual(Array.from(c.gramajes), [750, 500, 250]);
+  for (const valor of ['null', '{}', 'NaN', 'Infinity', "''", '0', '10']) {
+    assert.equal(evaluar(`normalizarFactor(${valor})`), 1);
+  }
+});
+
+test('calibrar carne no altera achuras, embutidos ni bebidas, pero si combustible y presupuesto', () => {
+  const { evaluar } = crearApp();
+  const datos = '{...ESTADO_INICIAL,personasAchuras:6,incluirExtras:true,adultosBebedores:4,precioCarne:10000}';
+  const base = evaluar(`calcularAsado(${datos})`);
+  const c = evaluar(`calcularAsado({...${datos},factorCompra:1.5})`);
+  for (const clave of ['kgAchuras', 'chorizos', 'morcillas']) assert.equal(c[clave], base[clave]);
+  assert.deepEqual(JSON.parse(JSON.stringify(c.bebidas)), JSON.parse(JSON.stringify(base.bebidas)));
+  assert.ok(c.kgCarneTotal > base.kgCarneTotal && c.carbonKg > base.carbonKg && c.lenaKg > base.lenaKg);
+  assert.ok(c.totalEstimado > base.totalEstimado);
+  assert.match(evaluar(`textoResumen(calcularAsado({...${datos},factorCompra:1.5}))`), /Ajuste de carne: 1,5x/);
+});
+
+test('cortes ajustados suman compras y cordero conserva medias reses exactas', () => {
+  const { evaluar } = crearApp();
+  for (const factor of [0.6, 0.95, 1, 1.12, 1.5]) {
+    const c = evaluar(`calcularAsado({...ESTADO_INICIAL,tipoCarne:'mixto_cerdo',factorCompra:${factor}})`);
+    assert.equal(Math.round((c.kgVacio + c.kgTira + c.kgPollo + c.kgCerdo) * 10), Math.round(c.kgCarneTotal * 10));
+  }
+  const cordero = evaluar("calcularAsado({...ESTADO_INICIAL,tipoCarne:'cordero',factorCompra:1.12})");
+  assert.equal(cordero.mediasReses, 2);
+  assert.equal(cordero.kgCordero, 12.5);
+  assert.equal(evaluar('calcularAsado({...ESTADO_INICIAL,pagadores:0,factorCompra:1.5}).kgCarneTotal'), 0);
+});
+
+test('sugerencias se basan en el asado guardado y respetan limites', () => {
+  const { evaluar } = crearApp();
+  assert.equal(evaluar('sugerirFactor({factorCompra:1},"falto")'), 1.12);
+  assert.equal(evaluar('sugerirFactor({factorCompra:1},"sobro")'), 0.95);
+  assert.equal(evaluar('sugerirFactor({factorCompra:1.12},"perfecto")'), 1.12);
+  assert.equal(evaluar('sugerirFactor({factorCompra:1.5},"falto")'), 1.5);
+  assert.equal(evaluar('sugerirFactor({factorCompra:0.6},"sobro")'), 0.6);
+});
+
+test('evaluar y corregir son idempotentes y nunca cambian el calculo guardado o actual', () => {
+  const { evaluar, memoria } = crearApp();
+  evaluar('guardarAsado()');
+  const id = evaluar('leerHistorial()[0].id');
+  const original = JSON.parse(memoria.get('asadoProHistorialVanilla'))[0].calculo;
+  evaluar(`guardarEvaluacionAsado('${id}','falto'); guardarEvaluacionAsado('${id}','falto')`);
+  assert.equal(evaluar('leerHistorial().length'), 1);
+  assert.equal(evaluar('calculoActual.factorCompra'), 1);
+  assert.deepEqual(JSON.parse(memoria.get('asadoProHistorialVanilla'))[0].calculo, original);
+  evaluar(`guardarEvaluacionAsado('${id}','sobro')`);
+  assert.equal(evaluar('sugerirFactor(leerHistorial()[0].calculo,leerHistorial()[0].evaluacion)'), 0.95);
+  evaluar(`guardarEvaluacionAsado('${id}','')`);
+  assert.equal(evaluar('leerHistorial()[0].evaluacion'), '');
+});
+
+test('aplicar sugerencia requiere confirmacion y conserva el resto del formulario', () => {
+  const { evaluar, window } = crearApp();
+  evaluar('guardarAsado(); guardarEvaluacionAsado(leerHistorial()[0].id,"falto"); aplicarEstadoFormulario({...ESTADO_INICIAL,pagadores:20,gratis:1,precioCarne:12000,personasAchuras:5})');
+  window.confirm = () => false;
+  evaluar('aplicarSugerenciaAsado(leerHistorial()[0].id)');
+  assert.equal(evaluar('calculoActual.factorCompra'), 1);
+  window.confirm = () => true;
+  evaluar('aplicarSugerenciaAsado(leerHistorial()[0].id); aplicarSugerenciaAsado(leerHistorial()[0].id)');
+  assert.equal(evaluar('calculoActual.factorCompra'), 1.12);
+  assert.equal(evaluar('calculoActual.pagadores'), 20);
+  assert.equal(evaluar('calculoActual.gratis'), 1);
+  assert.equal(evaluar('calculoActual.precioCarne'), 12000);
+  assert.equal(evaluar('calculoActual.personasAchuras'), 5);
+  assert.equal(evaluar('leerHistorial()[0].calculo.factorCompra'), 1);
+});
+
+test('factor persiste, historial lo restaura y reset vuelve a uno sin borrar evaluaciones', () => {
+  const { evaluar } = crearApp();
+  evaluar('aplicarEstadoFormulario({...ESTADO_INICIAL,factorCompra:1.12}); guardarAsado(); guardarEvaluacionAsado(leerHistorial()[0].id,"perfecto"); guardarEstadoFormulario(); aplicarEstadoFormulario(ESTADO_INICIAL); restaurarEstadoFormulario()');
+  assert.equal(evaluar('calculoActual.factorCompra'), 1.12);
+  evaluar('resetearFormulario()');
+  assert.equal(evaluar('calculoActual.factorCompra'), 1);
+  assert.equal(evaluar('leerHistorial()[0].evaluacion'), 'perfecto');
+  evaluar('cargarAsadoHistorial(leerHistorial()[0].calculo)');
+  assert.equal(evaluar('calculoActual.factorCompra'), 1.12);
+});
+
+test('historial antiguo obtiene identificador estable y error al guardar no aplica sugerencias', () => {
+  const { evaluar, memoria, window } = crearApp();
+  memoria.set('asadoProHistorialVanilla', JSON.stringify([{fecha:'2026-10-08T15:00:00.000Z',evaluacion:'inventada',calculo:{totalPersonas:12,pagadores:12}}]));
+  const id = evaluar('leerHistorial()[0].id');
+  assert.equal(evaluar('leerHistorial()[0].id'), id);
+  assert.equal(evaluar('leerHistorial()[0].evaluacion'), '');
+  window.localStorage.setItem = () => { throw new Error('Sin espacio'); };
+  assert.equal(evaluar(`guardarEvaluacionAsado('${id}','falto')`), false);
+  assert.equal(evaluar('leerHistorial()[0].evaluacion'), '');
+  assert.equal(evaluar('calculoActual.factorCompra'), 1);
+});
+
+test('enlaces v2 guardan el factor y enlaces vanilla v1 mantienen uno', () => {
+  const { evaluar } = crearApp();
+  assert.equal(evaluar('decodificarAsadoCompartido(codificarAsadoCompartido({...ESTADO_INICIAL,factorCompra:1.12})).estado.factorCompra'), 1.12);
+  const anterior = evaluar(`(() => { const estado = {...ESTADO_INICIAL}; delete estado.factorCompra;
+    return validarDatosCompartidos({version:1,fecha:'2026-10-08T15:00:00.000Z',estado}); })()`);
+  assert.equal(anterior.estado.factorCompra, 1);
+  assert.equal(evaluar(`validarDatosCompartidos({version:2,fecha:'2026-10-08T15:00:00.000Z',estado:{...ESTADO_INICIAL,factorCompra:1.123}})`), null);
+  assert.equal(evaluar(`validarDatosCompartidos({version:2,fecha:'2026-10-08T15:00:00.000Z',estado:{...ESTADO_INICIAL,factorCompra:5}})`), null);
+});
 
 test('achuras son optativas, adicionales y presupuestadas por su propio precio', () => {
   const { evaluar } = crearApp();
@@ -109,7 +221,7 @@ test('enlaces corruptos, versiones desconocidas y precios invalidos se rechazan'
     assert.equal(evaluar(`decodificarAsadoCompartido(${texto})`), null);
   }
   const base = '{version:1,fecha:"2026-10-08T15:00:00.000Z",estado:{...ESTADO_INICIAL}}';
-  for (const cambio of ['version:2', 'fecha:"mala"', 'estado:{...ESTADO_INICIAL,precioCarne:-1}',
+  for (const cambio of ['version:99', 'fecha:"mala"', 'estado:{...ESTADO_INICIAL,precioCarne:-1}',
     'estado:{...ESTADO_INICIAL,precioCarne:"12.5"}', 'estado:{...ESTADO_INICIAL,modo:"inventado"}',
     'estado:{...ESTADO_INICIAL,temperatura:99}', 'estado:{...ESTADO_INICIAL,hombres:99}',
     'estado:{...ESTADO_INICIAL,pagadores:0}', 'estado:{...ESTADO_INICIAL,pagadores:10001}']) {

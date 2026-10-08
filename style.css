@@ -1,5 +1,6 @@
 /*
   CHANGELOG
+  - Agregué evaluación accesible en cada asado y ajuste de compra con foco visible.
   - Reutilicé el diálogo de ajustes para confirmar enlaces y conservar foco accesible.
   - Agregué selector de carnes y lista editable responsive con controles accesibles.
   - Agregué ajustes accesibles desde la tuerca, perfiles y reflujo sin espacios reservados.
@@ -123,6 +124,29 @@ select {
 
 #salidaEnlace { min-width: 0; width: 100%; }
 #resumenCompartido { margin: 0; overflow-wrap: anywhere; }
+
+.historial-evaluacion {
+  display: grid;
+  gap: 8px;
+  padding-top: 16px;
+  margin-top: 8px;
+  border-top: 1px solid var(--borde);
+  min-width: 0;
+}
+
+.btn-ajuste {
+  min-height: 48px;
+  border: 1px solid var(--borde);
+  border-radius: 6px;
+  padding: 8px 12px;
+  color: var(--texto);
+  background: var(--panel-2);
+  text-align: left;
+  overflow-wrap: anywhere;
+}
+
+.sugerencia-factor { margin: 0; }
+#valorFactorCompra { color: var(--texto); font-weight: 800; }
 
 @media (min-width: 480px) {
   .lista-editable__campos { grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); }
@@ -872,6 +896,7 @@ button:disabled {
 }
 
 .acordeon-ajustes {
+  scroll-margin-top: 96px;
   margin: 0;
   border: 0;
   border-bottom: 1px solid var(--borde);

@@ -1,5 +1,7 @@
 /*
   CHANGELOG
+  - Agregué evaluaciones idempotentes y ajuste explícito de carne, independiente de los gramajes base.
+  - Versioné enlaces con el factor aplicado y mantuve lectura de enlaces vanilla anteriores.
   - Agregué achuras optativas y enlaces versionados con validación y confirmación de carga.
   - Recuperé cortes, rendimiento opcional, cordero por media res y bebidas.
   - Agregué lista editable persistente compartida con impresión e historial.
@@ -39,6 +41,7 @@ const ESTADO_INICIAL = {
   modo: 'premium',
   tipoCarne: 'automatico',
   ajustarPorCorte: false,
+  factorCompra: 1,
   incluirExtras: false,
   panGeneroso: false,
   ensaladaAbundante: false,
@@ -79,12 +82,17 @@ const TIPOS_CARNE = {
   mixto_pollo: { etiqueta: 'Vacuno + pollo', mix: [0.25, 0.35, 0.4, 0], gramos: [760, 520, 260], rendimiento: 0.7025 },
   cordero: { etiqueta: 'Cordero patagónico', mix: [0, 0, 0, 0], gramos: [950, 650, 330], rendimiento: 0.55 },
 };
-const CLAVES_OPCIONES = ['tipoCarne', 'ajustarPorCorte', 'incluirExtras', 'panGeneroso', 'ensaladaAbundante', 'adultosBebedores', 'personasAchuras'];
+const CLAVES_OPCIONES = ['tipoCarne', 'ajustarPorCorte', 'factorCompra', 'incluirExtras', 'panGeneroso', 'ensaladaAbundante', 'adultosBebedores', 'personasAchuras'];
 const CLAVES_CHECKS = ['ajustarPorCorte', 'incluirExtras', 'panGeneroso', 'ensaladaAbundante'];
 let listaEdiciones = {};
 let listaPersonalizados = [];
 let asadoCompartidoPendiente = null;
-const VERSION_ENLACE = 1;
+const VERSION_ENLACE = 2;
+const EVALUACIONES_CARNE = {
+  perfecto: { etiqueta: 'Justo', delta: 0 },
+  sobro: { etiqueta: 'Sobró', delta: -0.05 },
+  falto: { etiqueta: 'Faltó', delta: 0.12 },
+};
 const MAXIMO_ENLACE = 12000;
 const CLAVES_ENLACE = Object.keys(ESTADO_INICIAL).filter((clave) => !clave.startsWith('lista'));
 
@@ -209,6 +217,21 @@ function leerPrecio(valor) {
   return Number.isSafeInteger(numero) ? numero : '';
 }
 
+// El factor es optativo y finito, entre 0,60 y 1,50, con pasos de un punto porcentual.
+// Ante datos corruptos se conserva la base (1x), no una reducción automática.
+function normalizarFactor(valor) {
+  if (typeof valor !== 'string' && typeof valor !== 'number' || valor === '') return 1;
+  const numero = Number(valor);
+  return Number.isFinite(numero) && numero >= 0.6 && numero <= 1.5 ? Math.round(numero * 100) / 100 : 1;
+}
+
+// Se calcula siempre desde el factor del asado evaluado, nunca por clics acumulados.
+function sugerirFactor(calculo, evaluacion) {
+  const base = normalizarFactor(calculo.factorCompra);
+  if (!Object.hasOwn(EVALUACIONES_CARNE, evaluacion)) return base;
+  return redondear(Math.min(1.5, Math.max(0.6, base + EVALUACIONES_CARNE[evaluacion].delta)), 2);
+}
+
 // Normaliza datos del formulario y del almacenamiento sin confiar en su estructura.
 function normalizarEstado(datos) {
   const estado = datos && typeof datos === 'object' && !Array.isArray(datos) ? datos : {};
@@ -224,6 +247,7 @@ function normalizarEstado(datos) {
     gratis: parsearEnteroPositivo(estado.gratis),
     ...Object.fromEntries(CLAVES_PERFILES.map((clave) => [clave, parsearEnteroPositivo(estado[clave])])),
     modo: Object.hasOwn(MODOS_COMPRA, estado.modo) ? estado.modo : ESTADO_INICIAL.modo,
+    factorCompra: normalizarFactor(estado.factorCompra),
     tipoCarne: Object.hasOwn(TIPOS_CARNE, estado.tipoCarne) ? estado.tipoCarne : 'automatico',
     ...Object.fromEntries(CLAVES_CHECKS.map((clave) => [clave, estado[clave] === true
       && (clave !== 'ajustarPorCorte' || Object.hasOwn(TIPOS_CARNE, estado.tipoCarne) && estado.tipoCarne !== 'automatico')])),
@@ -274,6 +298,7 @@ function obtenerEstado() {
     ...Object.fromEntries(CLAVES_PERFILES.map((clave) => [clave, leerEnteroInput(elementos[clave])])),
     modo,
     tipoCarne: elementos.tipoCarne.value,
+    factorCompra: elementos.factorCompra.value,
     ...Object.fromEntries(CLAVES_CHECKS.map((clave) => [clave, elementos[clave].checked])),
     adultosBebedores: elementos.adultosBebedores.value,
     personasAchuras: elementos.personasAchuras.value,
@@ -309,12 +334,15 @@ function calcularAsado(estado) {
   const sinPerfil = Math.max(0, totalPersonas - totalPerfiles);
   // Carne cruda: hombres × 750 + mujeres × 500 + niños × 250 + sin perfil × 500 g.
   // La compra se redondea hacia arriba a 100 g, sin reducir la base solicitada.
-  const gramosCarneTotal = perfilesValidos ? CLAVES_PERFILES.reduce(
+  const gramosCarneBase = perfilesValidos ? CLAVES_PERFILES.reduce(
     (suma, clave, indice) => suma + estado[clave] * gramajes[indice], sinPerfil * gramosSinPerfil
   ) : 0;
-  const mediasReses = estado.tipoCarne === 'cordero' ? Math.ceil(gramosCarneTotal / 6250) : 0;
+  // Porcentajes enteros evitan que el error binario de 1.12 eleve compras exactas a 100 g extra.
+  const porcentajeCompra = Math.round(estado.factorCompra * 100);
+  const gramosCarneTotal = gramosCarneBase * porcentajeCompra / 100;
+  const mediasReses = estado.tipoCarne === 'cordero' ? Math.ceil(gramosCarneBase * porcentajeCompra / 625000) : 0;
   const kgCordero = mediasReses * 6.25;
-  const kgCarneTotal = estado.tipoCarne === 'cordero' ? kgCordero : Math.ceil(gramosCarneTotal / 100) / 10;
+  const kgCarneTotal = estado.tipoCarne === 'cordero' ? kgCordero : Math.ceil(gramosCarneBase * porcentajeCompra / 10000) / 10;
   const hayComensales = perfilesValidos && totalPersonas > 0;
   const mezcla = corte.mix ? { vacio: corte.mix[0], tira: corte.mix[1], pollo: corte.mix[2], cerdo: corte.mix[3] } : modo;
   const [kgVacio, kgTira, kgPollo, kgCerdo] = estado.tipoCarne === 'cordero'
@@ -369,6 +397,7 @@ function calcularAsado(estado) {
     sinPerfil,
     perfilesValidos,
     gramosCarneTotal,
+    gramosCarneBase,
     kgCarneTotal,
     kgVacio,
     kgTira,
@@ -562,6 +591,10 @@ function crearCard({ emoji, alt, titulo, valor, detalle }) {
 }
 
 function renderizarResultados(calculo) {
+  $('#valorFactorCompra').textContent = `${formatearDecimal(calculo.factorCompra, 2)}x`;
+  $('#resumenCalibracion').textContent = calculo.factorCompra === 1 ? 'Sin ajuste: se mantienen los gramajes base.'
+    : `${calculo.factorCompra > 1 ? '+' : ''}${formatearDecimal((calculo.factorCompra - 1) * 100)}% de carne principal. Base: ${formatearKg(calculo.gramosCarneBase / 1000)}; objetivo: ${formatearKg(calculo.gramosCarneTotal / 1000)} antes del redondeo de compra.`;
+  elementos.factorCompra.setAttribute('aria-valuetext', `${formatearDecimal(calculo.factorCompra, 2)} veces el gramaje base de carne`);
   $('#campoPrecioAchuras').hidden = calculo.kgAchuras === 0;
   elementos.personasAchuras.max = String(calculo.totalPersonas);
   $('#detalleAchuras').textContent = `120 g crudos por persona, adicionales a la carne principal. Se computan ${FORMATO_AR.format(calculo.consumidoresAchuras)} comensales${calculo.personasAchuras > calculo.totalPersonas ? ' (limitados al total del asado)' : ''}.`;
@@ -598,7 +631,7 @@ function renderizarResultados(calculo) {
       alt: 'Carne',
       titulo: 'Carne total',
       valor: formatearCompraKg(calculo.kgCarneTotal),
-      detalle: `Carne cruda · ${calculo.porciones} porciones aprox. de ${PORCION_ESTANDAR_GRAMOS} g crudos · ${calculo.mediasReses ? `${calculo.mediasReses} medias reses` : 'compra en múltiplos de 100 g'} · neto comestible estimado ${formatearKg(calculo.kgNetoEstimado)}`,
+      detalle: `Carne cruda · ${calculo.porciones} porciones aprox. de ${PORCION_ESTANDAR_GRAMOS} g crudos · ${calculo.mediasReses ? `${calculo.mediasReses} medias reses` : 'compra en múltiplos de 100 g'} · neto comestible estimado ${formatearKg(calculo.kgNetoEstimado)}${calculo.factorCompra === 1 ? '' : ` · ajuste ${formatearDecimal(calculo.factorCompra, 2)}x`}`,
     }),
     crearCard({
       emoji: '🔪',
@@ -827,6 +860,7 @@ function aplicarEstadoFormulario(estado) {
   elementos.tipoCarne.value = estado.tipoCarne;
   elementos.adultosBebedores.value = String(estado.adultosBebedores);
   elementos.personasAchuras.value = String(estado.personasAchuras);
+  elementos.factorCompra.value = String(estado.factorCompra);
   CLAVES_CHECKS.forEach((clave) => { elementos[clave].checked = estado[clave]; });
   listaEdiciones = estado.listaEdiciones;
   listaPersonalizados = estado.listaPersonalizados;
@@ -904,6 +938,12 @@ function prepararInputs() {
     debounceRender();
   });
   elementos.sliderPersonas.addEventListener('change', confirmarCambios);
+  elementos.factorCompra.addEventListener('input', debounceRender);
+  elementos.factorCompra.addEventListener('change', confirmarCambios);
+  $('#restablecerFactor').addEventListener('click', () => {
+    elementos.factorCompra.value = '1';
+    confirmarCambios();
+  });
   [elementos.tipoCarne, ...CLAVES_CHECKS.map((clave) => elementos[clave])].forEach((input) => {
     input.addEventListener('change', confirmarCambios);
   });
@@ -932,6 +972,7 @@ function guardarAsado() {
 
   const historial = leerHistorial();
   historial.unshift({
+    id: `asado_${Date.now()}_${Math.floor(Math.random() * 1000000)}`,
     fecha: new Date().toISOString(),
     calculo: { ...calculoActual },
   });
@@ -958,7 +999,33 @@ function leerHistorial() {
     return campos.every((clave) => calculo[clave] == null
       || typeof calculo[clave] === 'number' && Number.isFinite(calculo[clave]) && calculo[clave] >= 0)
       && (Number.isFinite(calculo.totalPersonas) || Number.isFinite(calculo.personas));
-  }).slice(0, 10);
+  }).slice(0, 10).map((item, indice) => ({
+    ...item,
+    id: typeof item.id === 'string' && /^[a-z0-9_-]{1,80}$/.test(item.id)
+      ? item.id : `asado_${Date.parse(item.fecha)}_${indice}`,
+    evaluacion: Object.hasOwn(EVALUACIONES_CARNE, item.evaluacion) ? item.evaluacion : '',
+  }));
+}
+
+// Guardar/corregir una evaluación nunca modifica el formulario ni el cálculo histórico.
+function guardarEvaluacionAsado(id, evaluacion) {
+  if (evaluacion !== '' && !Object.hasOwn(EVALUACIONES_CARNE, evaluacion)) return false;
+  const historial = leerHistorial();
+  const item = historial.find((asado) => asado.id === id);
+  if (!item) return false;
+  if (item.evaluacion === evaluacion) return true;
+  item.evaluacion = evaluacion;
+  return escribirAlmacenamiento(STORAGE_HISTORIAL, historial);
+}
+
+function aplicarSugerenciaAsado(id) {
+  const item = leerHistorial().find((asado) => asado.id === id);
+  if (!item?.evaluacion) return;
+  const factor = sugerirFactor(item.calculo || item, item.evaluacion);
+  if (!window.confirm(`¿Aplicar ${formatearDecimal(factor, 2)}x a la carne principal del asado actual? Los demás datos se conservan.`)) return;
+  aplicarEstadoFormulario({ ...obtenerEstado(), factorCompra: factor });
+  guardarEstadoFormulario();
+  if (elementos.modalAjustes.open) elementos.modalAjustes.close();
 }
 
 function renderizarHistorial() {
@@ -1005,6 +1072,36 @@ function crearItemHistorial(item) {
   cargar.addEventListener('click', () => cargarAsadoHistorial(calculo));
   acciones.append(cargar);
   contenedor.append(titulo, detalle, acciones);
+  const evaluacion = crearNodo('div', 'historial-evaluacion');
+  const etiqueta = crearNodo('label', '', 'Resultado de la carne');
+  const selector = crearNodo('select', 'evaluacion-asado');
+  selector.id = `evaluacion_${item.id}`;
+  etiqueta.setAttribute('for', selector.id);
+  [['', 'Sin evaluar'], ...Object.entries(EVALUACIONES_CARNE).map(([valor, datos]) => [valor, datos.etiqueta])]
+    .forEach(([valor, texto]) => {
+      const opcion = crearNodo('option', '', texto); opcion.value = valor; selector.append(opcion);
+    });
+  selector.value = item.evaluacion;
+  const sugerencia = crearNodo('p', 'ayuda sugerencia-factor');
+  const aplicar = crearNodo('button', 'btn-ajuste');
+  aplicar.type = 'button';
+  const mostrarSugerencia = (valor) => {
+    const factor = sugerirFactor(calculo, valor);
+    sugerencia.textContent = valor
+      ? `Referencia: ${TIPOS_CARNE[calculo.tipoCarne]?.etiqueta || 'carne principal'} · factor guardado ${formatearDecimal(normalizarFactor(calculo.factorCompra), 2)}x. Sugerencia orientativa, no aplicada.` : '';
+    aplicar.textContent = `Usar ajuste ${formatearDecimal(factor, 2)}x`;
+    aplicar.hidden = !valor;
+  };
+  let valorGuardado = item.evaluacion;
+  selector.addEventListener('change', () => {
+    if (guardarEvaluacionAsado(item.id, selector.value)) {
+      valorGuardado = selector.value; mostrarSugerencia(valorGuardado);
+    } else selector.value = valorGuardado;
+  });
+  aplicar.addEventListener('click', () => aplicarSugerenciaAsado(item.id));
+  mostrarSugerencia(item.evaluacion);
+  evaluacion.append(etiqueta, selector, sugerencia, aplicar);
+  contenedor.append(evaluacion);
   return contenedor;
 }
 
@@ -1040,6 +1137,7 @@ function textoResumen(calculo) {
     `Corte: ${TIPOS_CARNE[calculo.tipoCarne].etiqueta}`,
     `Perfiles: ${calculo.hombres} hombres (${calculo.gramajes[0]} g), ${calculo.mujeres} mujeres (${calculo.gramajes[1]} g), ${calculo.ninos} niños (${calculo.gramajes[2]} g), ${calculo.sinPerfil} sin perfil (${calculo.gramosSinPerfil} g). Carne cruda.`,
     `Carne total sugerida: ${formatearCompraKg(calculo.kgCarneTotal)} (${calculo.porciones} porciones de carne cruda)`,
+    calculo.factorCompra !== 1 ? `Ajuste de carne: ${formatearDecimal(calculo.factorCompra, 2)}x sobre ${formatearKg(calculo.gramosCarneBase / 1000)} de base.` : null,
     ...obtenerLista(calculo).map((item) => `${item.nombre}: ${item.cantidad}${item.comprado ? ' (comprado)' : ''}`),
     Object.keys(calculo.listaEdiciones).length || calculo.listaPersonalizados.length
       ? 'Lista personalizada: el presupuesto corresponde a las cantidades sugeridas, no a las editadas.' : null,
@@ -1067,11 +1165,15 @@ function compartirPorWhatsapp() {
 // Un enlace es una instantánea editable, no un presupuesto firmado ni seguridad real.
 // Se permiten solo campos del formulario: nunca historial ni textos personales de la lista.
 function validarDatosCompartidos(datos) {
-  if (!datos || typeof datos !== 'object' || Array.isArray(datos) || datos.version !== VERSION_ENLACE
+  if (!datos || typeof datos !== 'object' || Array.isArray(datos) || ![1, VERSION_ENLACE].includes(datos.version)
     || typeof datos.fecha !== 'string' || datos.fecha.length > 30 || !Number.isFinite(Date.parse(datos.fecha))) return null;
-  const estado = datos.estado;
-  if (!estado || typeof estado !== 'object' || Array.isArray(estado)
-    || !CLAVES_ENLACE.every((clave) => Object.hasOwn(estado, clave))) return null;
+  if (!datos.estado || typeof datos.estado !== 'object' || Array.isArray(datos.estado)) return null;
+  // Los enlaces vanilla v1 anteriores no aplicaban calibración: conservan siempre 1x.
+  const estado = datos.version === 1 ? { ...datos.estado, factorCompra: 1 } : datos.estado;
+  if (!CLAVES_ENLACE.every((clave) => Object.hasOwn(estado, clave))) return null;
+  if (typeof estado.factorCompra !== 'number' || !Number.isFinite(estado.factorCompra)
+    || estado.factorCompra < 0.6 || estado.factorCompra > 1.5
+    || Math.abs(estado.factorCompra * 100 - Math.round(estado.factorCompra * 100)) > 0.00000001) return null;
   const enteros = ['pagadores', 'gratis', ...CLAVES_PERFILES, 'adultosBebedores', 'personasAchuras'];
   if (!enteros.every((clave) => Number.isSafeInteger(estado[clave]) && estado[clave] >= 0 && estado[clave] <= 10000)
     || estado.pagadores + estado.gratis > 10000) return null;
@@ -1161,7 +1263,7 @@ function ofrecerAsadoCompartido() {
     return;
   }
   const calculo = calcularAsado(asadoCompartidoPendiente.estado);
-  $('#resumenCompartido').textContent = `${FORMATO_AR.format(calculo.totalPersonas)} comensales · ${calculo.pagadores} pagan · ${TIPOS_CARNE[calculo.tipoCarne].etiqueta} · ${calculo.presupuestoCompleto ? 'Total' : 'Subtotal'} ${formatearMoneda(calculo.totalEstimado)}${calculo.presupuestoCompleto ? '' : ' (faltan precios)'}.`;
+  $('#resumenCompartido').textContent = `${FORMATO_AR.format(calculo.totalPersonas)} comensales · ${calculo.pagadores} pagan · ${TIPOS_CARNE[calculo.tipoCarne].etiqueta} · ajuste ${formatearDecimal(calculo.factorCompra, 2)}x · ${calculo.presupuestoCompleto ? 'Total' : 'Subtotal'} ${formatearMoneda(calculo.totalEstimado)}${calculo.presupuestoCompleto ? '' : ' (faltan precios)'}.`;
   $('#fechaCompartido').textContent = `Precios guardados el ${new Intl.DateTimeFormat('es-AR', { dateStyle: 'short', timeStyle: 'short' }).format(new Date(asadoCompartidoPendiente.fecha))}.`;
   if (!elementos.modalCompartido.open) elementos.modalCompartido.showModal();
 }
